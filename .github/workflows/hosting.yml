@@ -1,0 +1,27 @@
+name: Hosting
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Turn online play on or off
+        required: true
+        type: choice
+        options:
+          - off
+          - on
+          - status
+
+jobs:
+  hosting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: node scripts/hosting.mjs ${{ inputs.action }}

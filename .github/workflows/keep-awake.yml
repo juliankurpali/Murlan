@@ -12,6 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.RELAY_URL != '' }}
     steps:
-      - run: |
+      - uses: actions/checkout@v4
+      - name: Skip when hosting is off
+        id: host
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "state=on" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "state=$(node scripts/hosting.mjs status --quiet)" >> "$GITHUB_OUTPUT"
+      - name: Ping
+        if: steps.host.outputs.state != 'off'
+        run: |
           url="$(echo '${{ vars.RELAY_URL }}' | sed -e 's#^wss://#https://#' -e 's#^ws://#http://#')/health"
           curl -fsS --retry 3 --max-time 90 "$url"
+      - name: Hosting off
+        if: steps.host.outputs.state == 'off'
+        run: echo "Server is suspended; not waking it."

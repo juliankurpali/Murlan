@@ -51,7 +51,10 @@
     "test": "jest --ci",
     "lint": "expo lint",
     "server": "tsx server/main.ts",
-    "build:web": "expo export --platform web --output-dir dist"
+    "build:web": "expo export --platform web --output-dir dist",
+    "host:on": "node scripts/hosting.mjs on",
+    "host:off": "node scripts/hosting.mjs off",
+    "host:status": "node scripts/hosting.mjs status"
   },
   "private": true,
   "engines": {

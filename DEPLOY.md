@@ -88,6 +88,43 @@ What an attacker gets if they steal the whole database: usernames, friend lists,
 
 If you ever suspect a leak: in Neon, **Reset password** for the database role, paste the new connection string into Render's `DATABASE_URL`, and Render restarts with the new credentials. Players keep working because their secrets were never on the server.
 
+## Turn hosting on and off from your phone
+
+This stops or starts the **game server** on Render. The website URL stays up; online rooms only work when hosting is on. Player data in Neon is not deleted.
+
+One-time setup (laptop or GitHub website):
+
+1. Render Dashboard → **Account Settings → API Keys → Create**. Copy it once.
+2. GitHub → this repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   - Name `RENDER_API_KEY`, value the key from step 1.
+3. Optional: secret `RENDER_SERVICE_ID` (`srv-…` from the Render service URL). Skip this if the service is still named `murlan-server`.
+
+Then, from your phone:
+
+1. Open the **GitHub** app (or Safari) on [Hosting workflow](https://github.com/juliankurpali/Murlan/actions/workflows/hosting.yml).
+2. **Run workflow** → choose **off** or **on** → **Run**.
+3. Off takes a few seconds. On takes about a minute for Render to boot.
+
+In Cursor (Mac or the Cursor app, with this repo), you can say “turn hosting off” or run:
+
+```bash
+gh workflow run hosting.yml -f action=off
+gh workflow run hosting.yml -f action=on
+gh workflow run hosting.yml -f action=status
+```
+
+On a computer that has `RENDER_API_KEY` in the environment:
+
+```bash
+npm run host:off
+npm run host:on
+npm run host:status
+```
+
+Do **not** give the Render key to Grok, ChatGPT, or any chat bot. They cannot press this switch without that secret, and once they have it they can take the server down or up without you. Use GitHub’s own button, or Cursor talking to this repo.
+
+While hosting is off, **Keep server awake** will not ping Render, so it will not spend free hours.
+
 ## 7. Admin page (optional)
 
 Ongoing tables are not listed on the public site. To see them:
