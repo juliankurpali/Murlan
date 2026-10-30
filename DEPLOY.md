@@ -102,14 +102,14 @@ One-time setup (laptop or GitHub website):
 Then, from your phone:
 
 1. Open the **GitHub** app (or Safari) on [Hosting workflow](https://github.com/juliankurpali/Murlan/actions/workflows/hosting.yml).
-2. **Run workflow** → choose **off** or **on** → **Run**.
-3. Off takes a few seconds. On takes about a minute for Render to boot.
+2. **Run workflow** → choose **stop** or **start** → **Run**.
+3. Stop takes a few seconds. Start takes about a minute for Render to boot.
 
 In Cursor (Mac or the Cursor app, with this repo), you can say “turn hosting off” or run:
 
 ```bash
-gh workflow run hosting.yml -f action=off
-gh workflow run hosting.yml -f action=on
+gh workflow run hosting.yml -f action=stop
+gh workflow run hosting.yml -f action=start
 gh workflow run hosting.yml -f action=status
 ```
 

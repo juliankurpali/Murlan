@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Turn online play on or off
+        description: stop = take the server down, start = bring it back
         required: true
         type: choice
         options:
-          - off
-          - on
+          - stop
+          - start
           - status
 
 jobs:
@@ -24,4 +24,4 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-        run: node scripts/hosting.mjs ${{ inputs.action }}
+        run: node scripts/hosting.mjs "${{ inputs.action }}"

@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 // Suspend or resume the Render game server. Secrets stay in env, never in the repo.
-// Usage: node scripts/hosting.mjs on|off|status [--quiet]
+// Usage: node scripts/hosting.mjs start|stop|status [--quiet]
 // Env: RENDER_API_KEY (required), RENDER_SERVICE_ID (optional), RENDER_SERVICE_NAME (default murlan-server)
+// GitHub YAML treats the words on/off as booleans, so the workflow uses start/stop.
 
-const ACTION = (process.argv[2] ?? '').toLowerCase();
+const RAW = (process.argv[2] ?? '').toLowerCase();
+const ACTION =
+  RAW === 'stop' || RAW === 'off' || RAW === 'false' ? 'off'
+  : RAW === 'start' || RAW === 'on' || RAW === 'true' ? 'on'
+  : RAW;
 const QUIET = process.argv.includes('--quiet');
 const KEY = (process.env.RENDER_API_KEY ?? '').trim();
 const NAME = (process.env.RENDER_SERVICE_NAME ?? 'murlan-server').trim();
@@ -11,7 +16,7 @@ const FIXED_ID = (process.env.RENDER_SERVICE_ID ?? '').trim();
 const API = 'https://api.render.com/v1';
 
 if (!['on', 'off', 'status'].includes(ACTION)) {
-  console.error('Usage: node scripts/hosting.mjs on|off|status [--quiet]');
+  console.error('Usage: node scripts/hosting.mjs start|stop|status [--quiet]');
   process.exit(1);
 }
 if (KEY.length < 8) {
