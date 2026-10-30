@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AppSettings, Language, VoiceMode } from '../application/types';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { UiButton } from '../components/UiButton';
+import { normalizeUsername } from '../platform/ids';
 import { PublicPlayer } from '../platform/types';
 import { t } from '../i18n';
 import { saveProfilePhoto } from '../storage/profilePhoto';
@@ -27,7 +28,12 @@ export function SettingsScreen({
 }: Props) {
   const language = settings.language;
   const [username, setUsername] = useState(player?.username ?? '');
-  const shownUsername = username || player?.username || '';
+
+  useEffect(() => {
+    if (player?.username) {
+      setUsername(player.username);
+    }
+  }, [player?.username]);
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -80,12 +86,13 @@ export function SettingsScreen({
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
-                value={shownUsername}
-                onChangeText={setUsername}
+                maxLength={16}
+                value={username}
+                onChangeText={(value) => setUsername(normalizeUsername(value))}
                 style={styles.field}
               />
               {onRename ? (
-                <UiButton label={t(language, 'saveUsername')} variant="secondary" onPress={() => onRename(shownUsername)} />
+                <UiButton label={t(language, 'saveUsername')} variant="secondary" onPress={() => onRename(username)} />
               ) : null}
               <Text style={styles.hint}>{t(language, 'identityHint')}</Text>
             </>
