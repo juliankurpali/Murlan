@@ -1,4 +1,4 @@
-import { joinCodeFromLink } from '../src/online/joinLink';
+import { adminFlagFromLink, joinCodeFromLink } from '../src/online/joinLink';
 
 describe('join links', () => {
   it('reads a room code from Expo Go and app scheme URLs', () => {
@@ -11,5 +11,12 @@ describe('join links', () => {
     expect(joinCodeFromLink(null)).toBeNull();
     expect(joinCodeFromLink('https://example.com/other')).toBeNull();
     expect(joinCodeFromLink('murlan://join?code=nope')).toBeNull();
+  });
+
+  it('opens the admin page only when admin=1', () => {
+    expect(adminFlagFromLink('https://juliankurpali.github.io/Murlan/?admin=1')).toBe(true);
+    expect(adminFlagFromLink('https://juliankurpali.github.io/Murlan/?admin=true')).toBe(false);
+    expect(adminFlagFromLink('https://juliankurpali.github.io/Murlan/?code=A7K2')).toBe(false);
+    expect(adminFlagFromLink(null)).toBe(false);
   });
 });

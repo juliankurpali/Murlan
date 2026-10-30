@@ -47,6 +47,8 @@ type Props = {
   onPass: () => void;
   onMenu: () => void;
   onSettings: () => void;
+  fullscreenLabel?: string | null;
+  onFullscreen?: () => void;
 };
 
 function playSignature(view: PublicMatchView): { key: string; seat: SeatId; cards: Card[] } | null {
@@ -84,6 +86,8 @@ export function TableScreen({
   onPass,
   onMenu,
   onSettings,
+  fullscreenLabel,
+  onFullscreen,
 }: Props) {
   const { width, height } = useStageDimensions();
   const insets = useSafeAreaInsets();
@@ -325,6 +329,18 @@ export function TableScreen({
               >
                 <Text style={styles.menuItemText}>{t(language, 'settings')}</Text>
               </Pressable>
+              {onFullscreen && fullscreenLabel ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setMenuOpen(false);
+                    onFullscreen();
+                  }}
+                  style={styles.menuItem}
+                >
+                  <Text style={styles.menuItemText}>{fullscreenLabel}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {

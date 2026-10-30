@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hashIdentity } from '../src/platform/identity';
+import { hashIdentity, sameSecret } from '../src/platform/identity';
 import { applyUserIntent, parkPlayer, payloadFor, restorePlayer, startMatch } from '../src/platform/match';
 import { isUsername, suggestUsername } from '../src/platform/ids';
 import { PlatformStore } from '../src/platform/store';
@@ -29,6 +29,8 @@ describe('platform identity and matches', () => {
 
     const sessionHash = [...store.sessions.keys()][0];
     expect(store.auth(sessionHash)).toBeNull();
+    expect(sameSecret('admin-token-secret', 'admin-token-secret')).toBe(true);
+    expect(sameSecret('admin-token-secret', 'other-token-secret')).toBe(false);
   });
 
   it('sends and accepts a friend request', () => {
@@ -466,5 +468,20 @@ describe('platform identity and matches', () => {
     store.respondJoin(host, game.id, guest.id, false);
     expect(game.seats.some((seat) => seat.userId === guest.id)).toBe(false);
     expect(store.inbox(guest.id).some((item) => item.kind === 'join-denied')).toBe(true);
+  });
+
+  it('lists every live table for admin and hides finished games', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostadmin1').token)!;
+    const other = store.auth(store.guest('otheradmin').token)!;
+    const stranger = store.auth(store.guest('stranger99').token)!;
+    const live = store.createGame(host, '2v2');
+    store.requestJoin(other, live.code);
+    const finished = store.createGame(other, 'individual');
+    finished.status = 'complete';
+    const listed = store.adminGames();
+    expect(listed.map((row) => row.id)).toEqual([live.id]);
+    expect(listed[0]!.pendingJoins.map((row) => row.fromId)).toContain(other.id);
+    expect(store.activeFor(stranger.id).some((row) => row.id === live.id)).toBe(false);
   });
 });

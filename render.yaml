@@ -17,3 +17,5 @@ services:
         value: https://juliankurpali.github.io
       - key: DATABASE_URL
         sync: false
+      - key: ADMIN_TOKEN
+        sync: false

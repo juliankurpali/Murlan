@@ -50,13 +50,14 @@ import {
   watchTable,
 } from './online/net';
 import { ChatMessage } from './online/chat';
-import { clearJoinFromAddressBar, joinCodeFromLink, shareRoomLink } from './online/joinLink';
+import { adminFlagFromLink, clearAdminFromAddressBar, clearJoinFromAddressBar, joinCodeFromLink, shareRoomLink } from './online/joinLink';
 import { botSeatsOf, GameRoom, localSeatOf } from './online/room';
 import * as Linking from 'expo-linking';
 import { t, tError } from './i18n';
 import { isUsername, normalizeUsername } from './platform/ids';
 import { Friendship, GameSummary, JoinOutcome, MatchHistoryRow, PlatformNotice, PublicPlayer } from './platform/types';
 import { matchFromView } from './platform/viewMatch';
+import { AdminScreen } from './screens/AdminScreen';
 import { HandResultScreen } from './screens/HandResultScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
@@ -98,6 +99,13 @@ import {
   inviteToGame,
 } from './social/api';
 import { colors, motion } from './theme';
+import {
+  fullscreenAvailable,
+  fullscreenKind,
+  isFullscreen,
+  subscribeFullscreen,
+  toggleFullscreen,
+} from './webFullscreen';
 
 type InvitePrompt = {
   kind: 'join' | 'mid' | 'admit' | 'switch';
@@ -134,6 +142,8 @@ export function MatchApp() {
   const tableGameIdRef = useRef<string | null>(null);
   const startFreshRef = useRef<(factory: () => Promise<RoomResult>) => Promise<void>>(async () => undefined);
   const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [fullScreenOn, setFullScreenOn] = useState(isFullscreen);
   const localSeat = localSeatOf(onlineRoom) as SeatId;
   const botSeats = botSeatsOf(onlineRoom);
   const online = Boolean(onlineRoom);
@@ -750,6 +760,9 @@ export function MatchApp() {
       if (code) {
         setLinkCode(code);
       }
+      if (adminFlagFromLink(url)) {
+        setAdminOpen(true);
+      }
     };
     const sub = Linking.addEventListener('url', (event) => take(event.url));
     void Linking.getInitialURL().then(take);
@@ -766,6 +779,26 @@ export function MatchApp() {
     clearJoinFromAddressBar();
     void connectNet().then(() => startFreshRoom(() => joinGame(code)));
   }, [linkCode, me]);
+
+  useEffect(() => subscribeFullscreen(() => setFullScreenOn(isFullscreen())), []);
+
+  const showFullscreen = fullscreenAvailable();
+  const fullscreenLabel = showFullscreen
+    ? t(language, fullScreenOn && fullscreenKind() !== 'home-screen' ? 'exitFullScreen' : 'fullScreen')
+    : null;
+  const goFullscreen = () => {
+    void (async () => {
+      const result = await toggleFullscreen();
+      setFullScreenOn(isFullscreen());
+      if (result === 'home-screen') {
+        Alert.alert(t(language, 'addToHomeTitle'), t(language, 'addToHomeBody'));
+        return;
+      }
+      if (result === 'unavailable') {
+        Alert.alert(t(language, 'fullScreen'), t(language, 'fullscreenUnavailable'));
+      }
+    })();
+  };
 
   return (
     <View style={styles.shell}>
@@ -820,6 +853,8 @@ export function MatchApp() {
             settingsFromTable.current = true;
             dispatch({ type: 'navigate', screen: 'settings' });
           }}
+          fullscreenLabel={fullscreenLabel}
+          onFullscreen={showFullscreen ? goFullscreen : undefined}
         />
       ) : (
         <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
@@ -827,6 +862,7 @@ export function MatchApp() {
             <HomeScreen
               language={language}
               canResume={canResume}
+              fullscreenLabel={fullscreenLabel}
               onOnline={() => {
                 setNetError(null);
                 dispatch({ type: 'navigate', screen: 'social' });
@@ -838,6 +874,7 @@ export function MatchApp() {
                 settingsFromTable.current = false;
                 dispatch({ type: 'navigate', screen: 'settings' });
               }}
+              onFullscreen={showFullscreen ? goFullscreen : undefined}
             />
           ) : null}
           {session.screen === 'social' ? (
@@ -1164,6 +1201,17 @@ export function MatchApp() {
           dispatch({ type: 'navigate', screen: 'setup' });
         }}
       />
+      {adminOpen ? (
+        <SafeAreaView style={styles.adminOverlay} edges={['top', 'right', 'bottom', 'left']}>
+          <AdminScreen
+            language={language}
+            onBack={() => {
+              setAdminOpen(false);
+              clearAdminFromAddressBar();
+            }}
+          />
+        </SafeAreaView>
+      ) : null}
       <RotateHint language={language} />
     </View>
   );
@@ -1177,5 +1225,10 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.room,
+  },
+  adminOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.room,
+    zIndex: 30,
   },
 });

@@ -25,3 +25,9 @@ export function sameDigest(left: string, right: string): boolean {
   }
   return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
 }
+
+export function sameSecret(left: string, right: string): boolean {
+  const a = createHash('sha256').update(left).digest();
+  const b = createHash('sha256').update(right).digest();
+  return timingSafeEqual(a, b);
+}

@@ -968,6 +968,13 @@ export class PlatformStore {
       .map((game) => this.summary(game, userId));
   }
 
+  adminGames(): GameSummary[] {
+    return [...this.games.values()]
+      .filter((game) => game.status === 'lobby' || game.status === 'playing')
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .map((game) => ({ ...this.summary(game, null), pendingJoins: this.pendingJoins(game) }));
+  }
+
   remember(game: PlatformGame, userId: string, intentId?: string): boolean {
     const remembered = rememberIntent(game.seenIntents[userId] ?? [], intentId);
     game.seenIntents[userId] = remembered.seen;

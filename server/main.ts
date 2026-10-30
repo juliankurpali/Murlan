@@ -3,12 +3,14 @@ import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { applyUserIntent, autoAct, connectedHumans, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
+import { sameSecret } from '../src/platform/identity';
 import { PlatformStore } from '../src/platform/store';
 import { PlatformGame, PlatformPlayer } from '../src/platform/types';
 import { openPostgres, Persistence } from './persist';
 
 const PORT = Number(process.env.PORT ?? process.env.MURLAN_RELAY_PORT ?? 8787);
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 const TRUST_PROXY = process.env.TRUST_PROXY === '1' || Boolean(process.env.RENDER);
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS ?? '')
   .split(',')
@@ -294,6 +296,23 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
   try {
     if (req.method === 'GET' && path === '/health') {
       json(res, 200, { ok: true });
+      return;
+    }
+    if (req.method === 'GET' && path === '/v1/admin/games') {
+      if (ADMIN_TOKEN.length < 16) {
+        json(res, 404, { error: 'not-found' });
+        return;
+      }
+      const token = bearer(req);
+      if (!token || !sameSecret(token, ADMIN_TOKEN)) {
+        if (!store.rateOk(`admin-fail:${ip}`, 10, 10 * 60 * 1000)) {
+          json(res, 429, { error: 'rate-limit' });
+          return;
+        }
+        json(res, 401, { error: 'auth' });
+        return;
+      }
+      json(res, 200, { games: store.adminGames() });
       return;
     }
     if (req.method === 'POST' && path === '/v1/guest') {

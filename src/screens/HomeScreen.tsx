@@ -7,10 +7,12 @@ import { colors, fonts, spacing } from '../theme';
 type Props = {
   language: Language;
   canResume: boolean;
+  fullscreenLabel?: string | null;
   onOnline: () => void;
   onResume: () => void;
   onRules: () => void;
   onSettings: () => void;
+  onFullscreen?: () => void;
 };
 
 function Crown() {
@@ -24,7 +26,16 @@ function Crown() {
   );
 }
 
-export function HomeScreen({ language, canResume, onOnline, onResume, onRules, onSettings }: Props) {
+export function HomeScreen({
+  language,
+  canResume,
+  fullscreenLabel,
+  onOnline,
+  onResume,
+  onRules,
+  onSettings,
+  onFullscreen,
+}: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.brand}>
@@ -41,6 +52,9 @@ export function HomeScreen({ language, canResume, onOnline, onResume, onRules, o
           <UiButton label={t(language, 'rules')} variant="ghost" onPress={onRules} style={styles.half} />
           <UiButton label={t(language, 'settings')} variant="ghost" onPress={onSettings} style={styles.half} />
         </View>
+        {onFullscreen && fullscreenLabel ? (
+          <UiButton label={fullscreenLabel} variant="ghost" onPress={onFullscreen} />
+        ) : null}
       </View>
     </View>
   );

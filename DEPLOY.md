@@ -88,11 +88,20 @@ What an attacker gets if they steal the whole database: usernames, friend lists,
 
 If you ever suspect a leak: in Neon, **Reset password** for the database role, paste the new connection string into Render's `DATABASE_URL`, and Render restarts with the new credentials. Players keep working because their secrets were never on the server.
 
+## 7. Admin page (optional)
+
+Ongoing tables are not listed on the public site. To see them:
+
+1. On Render, **murlan-server → Environment → Add `ADMIN_TOKEN`**. Use a long random string (at least 16 characters), for example 32 hex bytes from a password manager. Save — Render restarts the server.
+2. Open `https://juliankurpali.github.io/Murlan/?admin=1` and paste the same token. The page lists lobby and in-play rooms (codes, seats, waiting joiners) and refreshes every few seconds. Wrong guesses are rate-limited. If `ADMIN_TOKEN` is unset, the page reports that admin is disabled.
+
+Do not put this token in the repo or in GitHub variables.
+
 ## What "production ready" covers now
 
 - **Server:** reads `PORT` from the host, uses the real visitor IP behind Render's proxy for rate limits, saves to Postgres (at most every 5 s, plus a final save on shutdown), drops finished games and expired sessions hourly, `/health` check.
 - **Data safety:** the database holds only hashed identities and hashed session tokens. Stolen data cannot be used to log in as anyone. Profile photos never leave the device.
-- **App:** production builds talk only to `RELAY_URL` (no LAN guessing), use `wss://`, show a "turn your phone sideways" screen in portrait, real error popups in the browser, room links that work under `/Murlan/`, and saved profile photos in the browser.
+- **App:** production builds talk only to `RELAY_URL` (no LAN guessing), use `wss://`, show a "turn your phone sideways" screen in portrait, real error popups in the browser, room links that work under `/Murlan/`, saved profile photos in the browser, a Full screen control (Add to Home Screen on iPhone Safari), and a locked `?admin=1` page for live tables.
 
 ## Known limits of the free setup
 

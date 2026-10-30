@@ -187,3 +187,10 @@ export async function setLobbyReady(gameId: string, ready: boolean) {
 export async function leaveGame(gameId: string) {
   return request<{ ok: boolean; ended?: boolean }>(`/v1/games/${gameId}/leave`, { method: 'POST' });
 }
+
+export async function fetchAdminGames(adminToken: string): Promise<GameSummary[]> {
+  const result = await request<{ games: GameSummary[] }>('/v1/admin/games', {
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  return result.games;
+}
