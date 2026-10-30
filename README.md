@@ -1,61 +1,42 @@
 # Murlan
 
-Offline four-player Murlan for iPhone: play against three bots in 2v2 or individual mode. English and Albanian UI. Online play, accounts, and ads are out of scope.
+The Albanian four-player card game. Play 2 vs 2 or individual with friends online, with table chat and voice, in English or Albanian.
 
-## Requirements
+- Play: `https://juliankurpali.github.io/Murlan/` (turn your phone sideways)
+- Deploy: see `DEPLOY.md`
+- How it works: see `ARCHITECTURE.md`
+- Game rules: see `GAME_RULES.md`
 
-- Node.js 22.13+, 24.3+, or 26+ (Expo SDK 58). Node 23 may warn but usually still runs.
-- npm 10+
-- Xcode + iOS Simulator, or Expo Go on a physical iPhone
+## Run locally
 
-## Install
+Requires Node.js 22+ and npm 10+.
 
 ```bash
 npm install
+npm run relay     # game server on :8787 (data in server/data/, git-ignored)
+npm start         # Expo: press i for the iOS Simulator, or scan with Expo Go on the same Wi‑Fi
+npm run web       # or play in the browser
 ```
-
-## Run
-
-Start the Metro bundler:
-
-```bash
-npm start
-```
-
-Then:
-
-- Press `i` for the **iOS Simulator**
-- Scan the QR code with **Expo Go** on a physical iPhone
-
-Or:
-
-```bash
-npx expo start
-npx expo start --ios
-```
-
-If Expo Go on a physical iPhone is still on SDK 57, use the iOS Simulator with this SDK 58 project.
 
 ## Checks
 
 ```bash
 npm run typecheck
 npm test
+npm run lint
 ```
-
-`npx expo-doctor` checks Expo dependency alignment.
 
 ## Layout
 
-- `src/domain/` — pure TypeScript engine (no React Native)
-- `src/application/` — start, play, pass, bots, next hand, resume
-- `src/storage/` — AsyncStorage save/resume
-- `src/screens/` and `src/components/` — UI
-- `tests/` — engine and application tests
+- `src/domain/`: pure TypeScript game engine (rules, combinations, scoring, bots)
+- `src/platform/`: server-side identity, rooms, friends, matches
+- `src/online/`: client networking and room state
+- `src/feel/`: sound, haptics, voice capture and playback
+- `src/screens/`, `src/components/`: UI
+- `server/`: HTTP + WebSocket game server
+- `tests/`: engine, platform, and voice tests
 
-See `GAME_RULES.md`, `ARCHITECTURE.md`, and `MILESTONES.md` for product rules.
-
-## Documented rule defaults
+## Rule defaults
 
 Uncertain house-rule points are config flags on each match, not silent guesses:
 
