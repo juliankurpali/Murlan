@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useStageDimensions } from '../components/WebStage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SeatAppearance, appearanceForSeat } from '../application/players';
 import { Language } from '../application/types';
@@ -84,7 +85,7 @@ export function TableScreen({
   onMenu,
   onSettings,
 }: Props) {
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useStageDimensions();
   const insets = useSafeAreaInsets();
   const phone = isPhoneViewport(width, height);
   const cardMax = handCardMax(width, height);

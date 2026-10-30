@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { LayoutChangeEvent, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { useStageDimensions } from './WebStage';
 import { SeatAppearance } from '../application/players';
 import { Language } from '../application/types';
 import { SeatId } from '../domain';
@@ -67,7 +68,7 @@ export function SeatRack({
   place = null,
   placeLabel = null,
 }: Props) {
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useStageDimensions();
   const phone = isPhoneViewport(width, height);
   const shown = dealing || finished || side === 'south' ? 0 : Math.max(0, cardCount);
   const mid = (shown - 1) / 2;

@@ -2,10 +2,13 @@ import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-nat
 import { Language } from '../application/types';
 import { t } from '../i18n';
 import { colors, fonts, spacing } from '../theme';
+import { isTouchWeb } from '../webSupport';
+
+const touch = isTouchWeb();
 
 export function RotateHint({ language }: { language: Language }) {
   const { width, height } = useWindowDimensions();
-  if (Platform.OS !== 'web' || height <= width) {
+  if (Platform.OS !== 'web' || !touch || height <= width) {
     return null;
   }
   return (

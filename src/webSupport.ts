@@ -9,3 +9,10 @@ export function installWebAlert() {
     window.alert(message ? `${title}\n\n${message}` : title);
   };
 }
+
+export function isTouchWeb(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return false;
+  }
+  return window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+}
