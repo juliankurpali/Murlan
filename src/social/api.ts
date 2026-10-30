@@ -34,9 +34,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const roots = apiRoots();
   let last = 'relayDown';
   for (const root of roots) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 8_000);
     try {
       const response = await fetch(`${root}${path}`, {
         ...init,
+        signal: abort.signal,
         headers: {
           'content-type': 'application/json',
           ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -53,7 +56,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       }
       return payload;
     } catch (error) {
-      last = error instanceof Error ? error.message : 'relayDown';
+      last = error instanceof Error && error.name !== 'AbortError' ? error.message : 'relayDown';
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw new Error(last);

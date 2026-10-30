@@ -453,25 +453,17 @@ export function MatchApp() {
       return;
     }
     const gameId = onlineRoom.id;
-    void (async () => {
-      let ended = false;
-      if (gameId) {
-        try {
-          const result = await leaveGame(gameId);
-          ended = Boolean(result.ended);
-        } catch {
-          /* socket leave still runs */
+    sendLeave();
+    tableGameIdRef.current = gameId;
+    void saveTableSession({ gameId, parked: true });
+    dispatch({ type: 'navigate', screen: 'home' });
+    void leaveGame(gameId)
+      .then((result) => {
+        if (result.ended) {
+          detachFromTable();
         }
-      }
-      sendLeave();
-      if (ended) {
-        detachFromTable();
-      } else if (gameId) {
-        tableGameIdRef.current = gameId;
-        void saveTableSession({ gameId, parked: true });
-      }
-      dispatch({ type: 'navigate', screen: 'home' });
-    })();
+      })
+      .catch(() => undefined);
   };
 
   useEffect(() => {
@@ -742,7 +734,7 @@ export function MatchApp() {
 
   const startFreshRoom = async (factory: () => Promise<RoomResult>) => {
     if (onlineRoom?.id) {
-      await leaveGame(onlineRoom.id).catch(() => undefined);
+      void leaveGame(onlineRoom.id).catch(() => undefined);
     }
     sendLeave();
     detachFromTable();
