@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { LayoutChangeEvent, StyleSheet } from 'react-native';
+import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
 import { Card } from '../domain';
 import { Language } from '../application/types';
-import { MotionScrollView, MotionView, cardSelectTransition } from '../motion';
 import { HandFit, fitHandCards } from './tableLayout';
 import { CardFace } from './CardFace';
 
@@ -34,13 +33,12 @@ export function HandStrip({
   const mid = (cards.length - 1) / 2;
   const tiltStep = 1.15;
   return (
-    <MotionScrollView
+    <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       onLayout={(event: LayoutChangeEvent) => setBoxW(event.nativeEvent.layout.width)}
       contentContainerStyle={[styles.row, styles.rowCenter, { paddingTop: resolved.lift }]}
       style={styles.scroller}
-      layoutScroll
     >
       {cards.map((card, index) => {
         const selected = selectedIds.includes(card.id);
@@ -50,10 +48,8 @@ export function HandStrip({
         const last = index === cards.length - 1;
         const stride = last ? resolved.width : resolved.width - resolved.overlap;
         return (
-          <MotionView
+          <View
             key={card.id}
-            layout="position"
-            transition={cardSelectTransition}
             style={[
               styles.slot,
               dimmed && styles.dimmed,
@@ -76,12 +72,13 @@ export function HandStrip({
               hitWidth={stride}
               tilt={selected ? 0 : tilt}
               liftOnSelect={false}
+              sharedLayout={false}
               onPress={() => onToggle(card.id)}
             />
-          </MotionView>
+          </View>
         );
       })}
-    </MotionScrollView>
+    </ScrollView>
   );
 }
 

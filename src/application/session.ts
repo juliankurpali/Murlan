@@ -21,6 +21,22 @@ export type SessionAction =
   | { type: 'askConfirmNewGame'; value: boolean }
   | { type: 'setSettings'; settings: Partial<AppSettings> };
 
+function keepSelectedIds(prev: SessionState, match: GameState | null): string[] {
+  if (!match || prev.selectedIds.length === 0 || !prev.match) {
+    return [];
+  }
+  if (
+    prev.match.handIndex !== match.handIndex ||
+    prev.match.phase !== match.phase ||
+    prev.match.currentSeat !== match.currentSeat ||
+    prev.match.history.length !== match.history.length
+  ) {
+    return [];
+  }
+  const live = new Set(match.hands.flatMap((hand) => hand.map((card) => card.id)));
+  return prev.selectedIds.filter((id) => live.has(id));
+}
+
 export function sessionReducer(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
     case 'hydrate':
@@ -42,7 +58,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
         ...state,
         match: action.match,
         lastError: action.error ?? null,
-        selectedIds: [],
+        selectedIds: keepSelectedIds(state, action.match),
         confirmNewGame: false,
       };
     case 'toggleCard': {
