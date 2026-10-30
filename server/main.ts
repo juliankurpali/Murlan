@@ -312,7 +312,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
         json(res, 401, { error: 'auth' });
         return;
       }
-      json(res, 200, { games: store.adminGames() });
+      json(res, 200, store.adminSnapshot());
       return;
     }
     if (req.method === 'POST' && path === '/v1/guest') {

@@ -5,6 +5,10 @@ import { rememberIntent } from '../online/lifecycle';
 import { avatarFor, createRoomCode, isUsername, normalizeUsername, randomId, suggestUsername } from './ids';
 import { hashIdentity, hashToken, isDigest, randomSessionToken, sameDigest } from './identity';
 import {
+  AdminGameView,
+  AdminPlayerView,
+  AdminSeatView,
+  AdminSnapshot,
   AuthResult,
   Friendship,
   GameInvite,
@@ -969,6 +973,92 @@ export class PlatformStore {
       .filter((game) => game.status === 'lobby' || game.status === 'playing')
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .map((game) => ({ ...this.summary(game, null), pendingJoins: this.pendingJoins(game) }));
+  }
+
+  adminView(game: PlatformGame): AdminGameView {
+    const match = game.match;
+    const seats: AdminSeatView[] = game.seats.map((seat, index) => {
+      const player = seat.userId ? this.players.get(seat.userId) : null;
+      const empty = !seat.userId && !seat.isBot;
+      return {
+        name: empty
+          ? 'Empty'
+          : seat.isBot
+            ? (seat.botName ?? player?.username ?? 'Bot')
+            : (player?.username ?? seat.botName ?? 'Empty'),
+        isBot: seat.isBot,
+        empty,
+        isHost: Boolean(seat.userId && seat.userId === game.createdBy),
+        connection: seat.connection,
+        muted: seat.muted,
+        speaking: seat.speaking,
+        voiceAvailable: seat.voiceAvailable,
+        lobbyReady: Boolean(seat.lobbyReady || seat.isBot || seat.userId === game.createdBy),
+        cards: match ? (match.hands[index]?.length ?? 0) : null,
+        score: match ? (match.scores[index] ?? 0) : null,
+      };
+    });
+    const humans = seats.filter((seat) => !seat.isBot && !seat.empty).length;
+    const bots = seats.filter((seat) => seat.isBot).length;
+    return {
+      id: game.id,
+      code: game.code,
+      mode: game.mode,
+      status: game.status === 'playing' ? 'playing' : 'lobby',
+      createdAt: game.createdAt,
+      updatedAt: game.updatedAt,
+      hostName: this.players.get(game.createdBy)?.username ?? 'Host',
+      seats,
+      pendingJoins: this.pendingJoins(game).map((row) => row.username),
+      phase: match?.phase ?? null,
+      handIndex: match ? match.handIndex + 1 : null,
+      currentName: match ? (seats[match.currentSeat]?.name ?? null) : null,
+      targetScore: match?.targetScore ?? null,
+      teamScores:
+        match?.mode === '2v2'
+          ? { team0: match.scores[0] + match.scores[2], team1: match.scores[1] + match.scores[3] }
+          : null,
+      trick: match?.trick.combination?.type ?? null,
+      chatLines: game.chat.length,
+      humans,
+      bots,
+      connectedHumans: game.seats.filter(
+        (seat) => Boolean(seat.userId) && !seat.isBot && seat.connection === 'connected',
+      ).length,
+    };
+  }
+
+  adminSnapshot(): AdminSnapshot {
+    const now = Date.now();
+    const games = [...this.games.values()]
+      .filter((game) => game.status === 'lobby' || game.status === 'playing')
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .map((game) => this.adminView(game));
+    const players: AdminPlayerView[] = [...this.players.values()]
+      .sort((left, right) => right.lastSeen - left.lastSeen)
+      .slice(0, 40)
+      .map((player) => {
+        const table = this.playingGame(player.id);
+        return {
+          username: player.username,
+          online: now - player.lastSeen < ONLINE_MS,
+          lastSeen: player.lastSeen,
+          gamesPlayed: player.gamesPlayed,
+          wins: player.wins,
+          tableCode: table && table.status !== 'complete' ? table.code : null,
+          tableStatus: table && table.status !== 'complete' ? table.status : null,
+        };
+      });
+    return {
+      at: now,
+      accounts: this.players.size,
+      online: [...this.players.values()].filter((player) => now - player.lastSeen < ONLINE_MS).length,
+      lobbies: games.filter((game) => game.status === 'lobby').length,
+      playing: games.filter((game) => game.status === 'playing').length,
+      waitingJoins: games.reduce((sum, game) => sum + game.pendingJoins.length, 0),
+      games,
+      players,
+    };
   }
 
   remember(game: PlatformGame, userId: string, intentId?: string): boolean {

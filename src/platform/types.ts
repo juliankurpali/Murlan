@@ -1,4 +1,4 @@
-import { GameState, MatchMode, PublicMatchView, SeatId } from '../domain';
+import { CombinationType, GameState, MatchMode, PublicMatchView, SeatId } from '../domain';
 import { ChatMessage } from '../online/chat';
 import { ConnectionState } from '../online/lifecycle';
 
@@ -177,6 +177,63 @@ export type GameSummary = {
 export type JoinOutcome = {
   game: GameSummary;
   pending: boolean;
+};
+
+export type AdminSeatView = {
+  name: string;
+  isBot: boolean;
+  empty: boolean;
+  isHost: boolean;
+  connection: ConnectionState;
+  muted: boolean;
+  speaking: boolean;
+  voiceAvailable: boolean;
+  lobbyReady: boolean;
+  cards: number | null;
+  score: number | null;
+};
+
+export type AdminGameView = {
+  id: string;
+  code: string;
+  mode: MatchMode;
+  status: 'lobby' | 'playing';
+  createdAt: number;
+  updatedAt: number;
+  hostName: string;
+  seats: AdminSeatView[];
+  pendingJoins: string[];
+  phase: GameState['phase'] | null;
+  handIndex: number | null;
+  currentName: string | null;
+  targetScore: number | null;
+  teamScores: { team0: number; team1: number } | null;
+  trick: CombinationType | null;
+  chatLines: number;
+  humans: number;
+  bots: number;
+  connectedHumans: number;
+};
+
+export type AdminPlayerView = {
+  username: string;
+  online: boolean;
+  lastSeen: number;
+  gamesPlayed: number;
+  wins: number;
+  tableCode: string | null;
+  tableStatus: PlatformGame['status'] | null;
+};
+
+export type AdminSnapshot = {
+  at: number;
+  accounts: number;
+  online: number;
+  lobbies: number;
+  playing: number;
+  waitingJoins: number;
+  games: AdminGameView[];
+  players: AdminPlayerView[];
 };
 
 export type TablePayload = {

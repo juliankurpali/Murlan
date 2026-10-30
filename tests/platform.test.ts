@@ -483,6 +483,31 @@ describe('platform identity and matches', () => {
     expect(listed.map((row) => row.id)).toEqual([live.id]);
     expect(listed[0]!.pendingJoins.map((row) => row.fromId)).toContain(other.id);
     expect(store.activeFor(stranger.id).some((row) => row.id === live.id)).toBe(false);
+    const snap = store.adminSnapshot();
+    expect(snap.lobbies).toBe(1);
+    expect(snap.playing).toBe(0);
+    expect(snap.waitingJoins).toBe(1);
+    expect(snap.games[0]!.pendingJoins).toContain(other.username);
+    expect(JSON.stringify(snap)).not.toContain(host.id);
+  });
+
+  it('shows admin table progress without hidden cards', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostsnap01').token)!;
+    const guest = store.auth(store.guest('guestsnap1').token)!;
+    const game = store.createGame(host, '2v2');
+    store.requestJoin(guest, game.code);
+    store.respondJoin(host, game.id, guest.id, true);
+    store.setLobbyReady(guest, game, true);
+    store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    startMatch(game);
+    const hidden = game.match!.hands[1]![0]!.id;
+    const snap = store.adminSnapshot();
+    expect(snap.playing).toBe(1);
+    expect(snap.games[0]!.humans).toBe(2);
+    expect(snap.games[0]!.bots).toBe(2);
+    expect(snap.games[0]!.handIndex).toBe(1);
+    expect(JSON.stringify(snap)).not.toContain(hidden);
   });
 
   it('only lists live tables a player already sat at', () => {

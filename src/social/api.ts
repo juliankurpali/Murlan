@@ -1,6 +1,7 @@
 import { MatchMode } from '../domain';
 import { apiRoots } from '../online/relayUrl';
 import {
+  AdminSnapshot,
   AuthResult,
   Friendship,
   GameSummary,
@@ -188,9 +189,8 @@ export async function leaveGame(gameId: string) {
   return request<{ ok: boolean; ended?: boolean }>(`/v1/games/${gameId}/leave`, { method: 'POST' });
 }
 
-export async function fetchAdminGames(adminToken: string): Promise<GameSummary[]> {
-  const result = await request<{ games: GameSummary[] }>('/v1/admin/games', {
+export async function fetchAdminSnapshot(adminToken: string): Promise<AdminSnapshot> {
+  return request<AdminSnapshot>('/v1/admin/games', {
     headers: { authorization: `Bearer ${adminToken}` },
   });
-  return result.games;
 }
