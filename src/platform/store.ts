@@ -955,15 +955,11 @@ export class PlatformStore {
   }
 
   activeFor(userId: string): GameSummary[] {
-    const invited = this.invites.filter((invite) => invite.toId === userId && invite.status === 'pending').map((invite) => invite.gameId);
-    const joining = this.joinRequests
-      .filter((row) => row.fromId === userId && row.status === 'pending')
-      .map((row) => row.gameId);
     return [...this.games.values()]
       .filter(
         (game) =>
           game.status !== 'complete' &&
-          (game.seats.some((seat) => seat.userId === userId) || invited.includes(game.id) || joining.includes(game.id)),
+          game.seats.some((seat) => seat.userId === userId && !seat.isBot),
       )
       .map((game) => this.summary(game, userId));
   }

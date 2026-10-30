@@ -484,4 +484,19 @@ describe('platform identity and matches', () => {
     expect(listed[0]!.pendingJoins.map((row) => row.fromId)).toContain(other.id);
     expect(store.activeFor(stranger.id).some((row) => row.id === live.id)).toBe(false);
   });
+
+  it('only lists live tables a player already sat at', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostseat01').token)!;
+    const guest = store.auth(store.guest('guestseat1').token)!;
+    const outsider = store.auth(store.guest('outsiders1').token)!;
+    const game = store.createGame(host, '2v2');
+    store.requestJoin(guest, game.code);
+    store.invite(host, game, outsider.username);
+    expect(store.activeFor(host.id).map((row) => row.id)).toEqual([game.id]);
+    expect(store.activeFor(guest.id)).toEqual([]);
+    expect(store.activeFor(outsider.id)).toEqual([]);
+    store.respondJoin(host, game.id, guest.id, true);
+    expect(store.activeFor(guest.id).map((row) => row.id)).toEqual([game.id]);
+  });
 });

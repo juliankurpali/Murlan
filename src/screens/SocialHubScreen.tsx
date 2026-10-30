@@ -159,25 +159,23 @@ export function SocialHubScreen({
               style={styles.input}
             />
             <UiButton label={t(language, 'joinRoom')} variant="secondary" onPress={join} />
-            <Text style={styles.label}>{t(language, 'activeGames')}</Text>
-            <ScrollView style={styles.games} contentContainerStyle={styles.gamesInner} showsVerticalScrollIndicator={false}>
-              {games.length === 0 ? <Text style={styles.meta}>{t(language, 'noActiveGames')}</Text> : null}
-              {games.map((game) => (
-                <Pressable key={game.id} onPress={() => onOpenGame(game)} style={styles.card}>
-                  <Text style={styles.cardTitle}>
-                    {game.code} · {game.mode === '2v2' ? t(language, 'mode2v2') : t(language, 'modeIndividual')}
-                  </Text>
-                  <Text style={styles.meta}>
-                    {game.joinPending
-                      ? t(language, 'waitingToJoin')
-                      : game.status === 'playing'
-                        ? t(language, 'resumeTable')
-                        : t(language, 'seatsOpen')}
-                    {game.invited ? ` · ${t(language, 'invitedYou')}` : ''}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {games.length > 0 ? (
+              <>
+                <Text style={styles.label}>{t(language, 'resumeGame')}</Text>
+                <ScrollView style={styles.games} contentContainerStyle={styles.gamesInner} showsVerticalScrollIndicator={false}>
+                  {games.map((game) => (
+                    <Pressable key={game.id} onPress={() => onOpenGame(game)} style={styles.card}>
+                      <Text style={styles.cardTitle}>
+                        {game.code} · {game.mode === '2v2' ? t(language, 'mode2v2') : t(language, 'modeIndividual')}
+                      </Text>
+                      <Text style={styles.meta}>
+                        {game.status === 'playing' ? t(language, 'resumeTable') : t(language, 'seatsOpen')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
           </View>
         </View>
       </View>
