@@ -209,6 +209,13 @@ export function endIfNoHumans(game: PlatformGame): boolean {
   if (connectedHumanSeats(game).length > 0) {
     return false;
   }
+  return forceEndGame(game);
+}
+
+export function forceEndGame(game: PlatformGame): boolean {
+  if (game.status === 'complete') {
+    return false;
+  }
   game.status = 'complete';
   game.updatedAt = Date.now();
   if (game.match && game.match.phase !== 'matchComplete') {

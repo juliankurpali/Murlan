@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hashIdentity, sameSecret } from '../src/platform/identity';
-import { applyUserIntent, parkPlayer, payloadFor, restorePlayer, startMatch } from '../src/platform/match';
+import { applyUserIntent, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch } from '../src/platform/match';
 import { isUsername, suggestUsername } from '../src/platform/ids';
 import { PlatformStore } from '../src/platform/store';
 
@@ -508,6 +508,24 @@ describe('platform identity and matches', () => {
     expect(snap.games[0]!.bots).toBe(2);
     expect(snap.games[0]!.handIndex).toBe(1);
     expect(JSON.stringify(snap)).not.toContain(hidden);
+  });
+
+  it('lets admin end a live table without recording a winner', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostend001').token)!;
+    const guest = store.auth(store.guest('guestend01').token)!;
+    const game = store.createGame(host, '2v2');
+    store.requestJoin(guest, game.code);
+    store.respondJoin(host, game.id, guest.id, true);
+    store.setLobbyReady(guest, game, true);
+    store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    startMatch(game);
+    expect(forceEndGame(game)).toBe(true);
+    expect(game.status).toBe('complete');
+    expect(game.match?.winner).toBeNull();
+    expect(store.adminSnapshot().games).toEqual([]);
+    expect(host.wins + guest.wins).toBe(0);
+    expect(forceEndGame(game)).toBe(false);
   });
 
   it('only lists live tables a player already sat at', () => {

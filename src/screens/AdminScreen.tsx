@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Language } from '../application/types';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
 import { CombinationType } from '../domain';
 import { t, tError } from '../i18n';
 import { AdminGameView, AdminPlayerView, AdminSeatView, AdminSnapshot } from '../platform/types';
-import { fetchAdminSnapshot } from '../social/api';
+import { endAdminGame, fetchAdminSnapshot } from '../social/api';
 import { colors, radius, spacing } from '../theme';
 
 const ADMIN_TOKEN_KEY = 'murlan.adminToken';
@@ -143,11 +144,13 @@ function GameCard({
   game,
   copied,
   onCopy,
+  onEnd,
 }: {
   language: Language;
   game: AdminGameView;
   copied: boolean;
   onCopy: () => void;
+  onEnd: () => void;
 }) {
   const filled = game.seats.filter((seat) => !seat.empty).length;
   const onTable = trickLabel(language, game.trick);
@@ -169,6 +172,9 @@ function GameCard({
         </View>
         <Pressable accessibilityRole="button" onPress={onCopy} style={styles.copyBtn}>
           <Text style={styles.copyText}>{copied ? t(language, 'adminCopied') : t(language, 'adminCopy')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onEnd} style={styles.copyBtn}>
+          <Text style={styles.endText}>{t(language, 'adminEnd')}</Text>
         </Pressable>
       </View>
       <Text style={styles.meta}>{bits.join(' · ')}</Text>
@@ -235,6 +241,7 @@ export function AdminScreen({ language, onBack }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+  const [ending, setEnding] = useState<AdminGameView | null>(null);
 
   const load = useCallback(
     async (secret: string) => {
@@ -305,6 +312,7 @@ export function AdminScreen({ language, onBack }: Props) {
   };
 
   return (
+    <View style={styles.root}>
     <LandscapeFrame
       title={t(language, 'adminTitle')}
       backLabel={t(language, 'back')}
@@ -369,6 +377,7 @@ export function AdminScreen({ language, onBack }: Props) {
                       setTimeout(() => setCopied((code) => (code === game.code ? null : code)), 1500);
                     });
                   }}
+                  onEnd={() => setEnding(game)}
                 />
               ))}
             </ScrollView>
@@ -405,10 +414,35 @@ export function AdminScreen({ language, onBack }: Props) {
         </LandscapePane>
       )}
     </LandscapeFrame>
+      <ConfirmDialog
+        visible={Boolean(ending)}
+        title={t(language, 'adminEndTitle')}
+        body={t(language, 'adminEndBody', { code: ending?.code ?? '' })}
+        confirmLabel={t(language, 'adminEnd')}
+        cancelLabel={t(language, 'cancel')}
+        onCancel={() => setEnding(null)}
+        onConfirm={() => {
+          const game = ending;
+          const secret = token;
+          setEnding(null);
+          if (!game || !secret) {
+            return;
+          }
+          void endAdminGame(secret, game.id)
+            .then(setSnapshot)
+            .catch((caught: unknown) => {
+              setError(unlockError(language, caught));
+            });
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   actions: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -553,6 +587,13 @@ const styles = StyleSheet.create({
   },
   copyText: {
     color: colors.gold,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  endText: {
+    color: colors.danger,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,

@@ -199,3 +199,10 @@ export async function fetchAdminSnapshot(adminToken: string): Promise<AdminSnaps
     headers: { authorization: `Bearer ${adminToken}` },
   });
 }
+
+export async function endAdminGame(adminToken: string, gameId: string): Promise<AdminSnapshot> {
+  return request<AdminSnapshot>(`/v1/admin/games/${encodeURIComponent(gameId)}/end`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+}

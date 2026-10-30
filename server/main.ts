@@ -2,7 +2,7 @@ import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { applyUserIntent, autoAct, connectedHumans, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
+import { applyUserIntent, autoAct, connectedHumans, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
 import { sameSecret } from '../src/platform/identity';
 import { PlatformStore } from '../src/platform/store';
 import { PlatformGame, PlatformPlayer } from '../src/platform/types';
@@ -107,6 +107,23 @@ function json(res: ServerResponse, status: number, payload: unknown) {
 }
 
 const PUBLIC_ERRORS = /^[a-z][a-z-]{1,40}$/;
+
+function requireAdmin(req: IncomingMessage, res: ServerResponse, ip: string): boolean {
+  if (ADMIN_TOKEN.length < 16) {
+    json(res, 404, { error: 'not-found' });
+    return false;
+  }
+  const token = bearer(req);
+  if (!token || !sameSecret(token, ADMIN_TOKEN)) {
+    if (!store.rateOk(`admin-fail:${ip}`, 10, 10 * 60 * 1000)) {
+      json(res, 429, { error: 'rate-limit' });
+      return false;
+    }
+    json(res, 401, { error: 'auth' });
+    return false;
+  }
+  return true;
+}
 
 function publicError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
@@ -299,19 +316,31 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       return;
     }
     if (req.method === 'GET' && path === '/v1/admin/games') {
-      if (ADMIN_TOKEN.length < 16) {
-        json(res, 404, { error: 'not-found' });
+      if (!requireAdmin(req, res, ip)) {
         return;
       }
-      const token = bearer(req);
-      if (!token || !sameSecret(token, ADMIN_TOKEN)) {
-        if (!store.rateOk(`admin-fail:${ip}`, 10, 10 * 60 * 1000)) {
-          json(res, 429, { error: 'rate-limit' });
-          return;
-        }
-        json(res, 401, { error: 'auth' });
+      json(res, 200, store.adminSnapshot());
+      return;
+    }
+    if (req.method === 'POST' && path.startsWith('/v1/admin/games/') && path.endsWith('/end')) {
+      if (!requireAdmin(req, res, ip)) {
         return;
       }
+      if (!store.rateOk(`admin-act:${ip}`, 30, 10 * 60 * 1000)) {
+        json(res, 429, { error: 'rate-limit' });
+        return;
+      }
+      const id = path.slice('/v1/admin/games/'.length, -'/end'.length);
+      const game = id && id.length <= 80 && !id.includes('/') ? store.games.get(id) : undefined;
+      if (!game || game.status === 'complete') {
+        json(res, 404, { error: 'room-missing' });
+        return;
+      }
+      forceEndGame(game);
+      store.closeOpenJoins(game);
+      store.save();
+      stopGame(game);
+      notifyGameClosed(game);
       json(res, 200, store.adminSnapshot());
       return;
     }

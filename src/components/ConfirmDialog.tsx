@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    zIndex: 30,
+    zIndex: 40,
   },
   card: {
     backgroundColor: colors.cream,
