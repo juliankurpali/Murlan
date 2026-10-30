@@ -23,7 +23,7 @@ jobs:
             echo "state=on" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "state=$(node scripts/hosting.mjs status --quiet)" >> "$GITHUB_OUTPUT"
+          echo "state=$(node scripts/hosting.mjs status server --quiet)" >> "$GITHUB_OUTPUT"
       - name: Ping
         if: steps.host.outputs.state != 'off'
         run: |

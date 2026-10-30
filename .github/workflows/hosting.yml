@@ -4,13 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: stop = take the server down, start = bring it back
+        description: stop = take it down, start = bring it back
         required: true
         type: choice
         options:
           - stop
           - start
           - status
+      what:
+        description: server = Render, database = Neon (does not delete players), both = server then database
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - server
+          - database
 
 jobs:
   hosting:
@@ -24,4 +33,7 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-        run: node scripts/hosting.mjs "${{ inputs.action }}"
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          NEON_ENDPOINT_ID: ${{ secrets.NEON_ENDPOINT_ID }}
+        run: node scripts/hosting.mjs "${{ inputs.action }}" "${{ inputs.what }}"

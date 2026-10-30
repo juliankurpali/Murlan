@@ -90,30 +90,38 @@ If you ever suspect a leak: in Neon, **Reset password** for the database role, p
 
 ## Turn hosting on and off from your phone
 
-This stops or starts the **game server** on Render. The website URL stays up; online rooms only work when hosting is on. Player data in Neon is not deleted.
+This stops or starts the **game server** (Render) and/or the **database compute** (Neon). The website URL stays up. Player rows are **not** deleted. Neon already sleeps after a few idle minutes; this switch parks it on purpose.
+
+If the game server is still on, it will wake the database on the next save. Stop **both** (or stop the server first) if you want the database to stay down.
 
 One-time setup (laptop or GitHub website):
 
 1. Render Dashboard → **Account Settings → API Keys → Create**. Copy it once.
-2. GitHub → this repo → **Settings → Secrets and variables → Actions → New repository secret**:
-   - Name `RENDER_API_KEY`, value the key from step 1.
-3. Optional: secret `RENDER_SERVICE_ID` (`srv-…` from the Render service URL). Skip this if the service is still named `murlan-server`.
+2. Neon Console → **Account settings → API keys → Create**. Copy it once.
+3. GitHub → this repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   - `RENDER_API_KEY` = the Render key
+   - `NEON_API_KEY` = the Neon key
+4. Optional: `RENDER_SERVICE_ID` (`srv-…`), `NEON_PROJECT_ID`, `NEON_ENDPOINT_ID` (`ep-…`). Skip these if the Render service is `murlan-server` and the Neon project name contains `murlan`.
 
 Then, from your phone:
 
-1. Open the **GitHub** app (or Safari) on [Hosting workflow](https://github.com/juliankurpali/Murlan/actions/workflows/hosting.yml).
-2. **Run workflow** → choose **stop** or **start** → **Run**.
-3. Stop takes a few seconds. Start takes about a minute for Render to boot.
+1. Open [Hosting workflow](https://github.com/juliankurpali/Murlan/actions/workflows/hosting.yml).
+2. **Run workflow**.
+3. Action: **stop** or **start**.
+4. What: **both**, **server**, or **database**.
+5. **Run workflow**.
 
-In Cursor (Mac or the Cursor app, with this repo), you can say “turn hosting off” or run:
+Stop takes a few seconds. Start takes about a minute for Render to boot.
+
+In Cursor (this repo):
 
 ```bash
-gh workflow run hosting.yml -f action=stop
-gh workflow run hosting.yml -f action=start
-gh workflow run hosting.yml -f action=status
+gh workflow run hosting.yml -f action=stop -f what=both
+gh workflow run hosting.yml -f action=start -f what=both
+gh workflow run hosting.yml -f action=status -f what=both
 ```
 
-On a computer that has `RENDER_API_KEY` in the environment:
+On a computer that has the same keys in the environment:
 
 ```bash
 npm run host:off
@@ -121,9 +129,9 @@ npm run host:on
 npm run host:status
 ```
 
-Do **not** give the Render key to Grok, ChatGPT, or any chat bot. They cannot press this switch without that secret, and once they have it they can take the server down or up without you. Use GitHub’s own button, or Cursor talking to this repo.
+Do **not** give these keys to Grok or any chat bot.
 
-While hosting is off, **Keep server awake** will not ping Render, so it will not spend free hours.
+While the server is off, **Keep server awake** will not ping Render, so it will not spend free hours.
 
 ## 7. Admin page (optional)
 

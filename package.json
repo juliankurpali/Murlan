@@ -52,9 +52,9 @@
     "lint": "expo lint",
     "server": "tsx server/main.ts",
     "build:web": "expo export --platform web --output-dir dist",
-    "host:on": "node scripts/hosting.mjs start",
-    "host:off": "node scripts/hosting.mjs stop",
-    "host:status": "node scripts/hosting.mjs status"
+    "host:on": "node scripts/hosting.mjs start both",
+    "host:off": "node scripts/hosting.mjs stop both",
+    "host:status": "node scripts/hosting.mjs status both"
   },
   "private": true,
   "engines": {
