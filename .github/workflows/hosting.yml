@@ -34,6 +34,7 @@ jobs:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
           NEON_ENDPOINT_ID: ${{ secrets.NEON_ENDPOINT_ID }}
         run: node scripts/hosting.mjs "${{ inputs.action }}" "${{ inputs.what }}"

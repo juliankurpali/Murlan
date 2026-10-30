@@ -106,6 +106,11 @@ function neonIdle(state) {
   return s === 'idle' || s === 'stopped' || s === 'suspended';
 }
 
+function neonError(prefix, result) {
+  const message = result.body?.message || result.body?.raw || '';
+  return `${prefix} (${result.status})${message ? `: ${message}` : ''}`;
+}
+
 async function applyNeon() {
   const key = (process.env.NEON_API_KEY ?? '').trim();
   const api = 'https://console.neon.tech/api/v2';
@@ -116,18 +121,39 @@ async function applyNeon() {
 
   const projectIdEnv = (process.env.NEON_PROJECT_ID ?? '').trim();
   const endpointIdEnv = (process.env.NEON_ENDPOINT_ID ?? '').trim();
+  const orgIdEnv = (process.env.NEON_ORG_ID ?? '').trim();
   let projectId = projectIdEnv;
 
   if (!projectId) {
-    const listed = await call('/projects?search=murlan&limit=20');
-    const projects = listed.body?.projects;
-    if (!listed.ok || !Array.isArray(projects)) {
-      throw new Error(`Could not list Neon projects (${listed.status}). Check NEON_API_KEY.`);
+    const orgIds = [];
+    if (orgIdEnv) orgIds.push(orgIdEnv);
+    else {
+      const orgs = await call('/users/me/organizations');
+      const list = orgs.body?.organizations;
+      if (!orgs.ok || !Array.isArray(list) || list.length === 0) {
+        throw new Error(
+          `${neonError('Could not list Neon organizations', orgs)}. Or set GitHub secret NEON_PROJECT_ID (Neon → Project settings).`,
+        );
+      }
+      for (const org of list) {
+        if (org?.id) orgIds.push(org.id);
+      }
+    }
+
+    const projects = [];
+    for (const orgId of orgIds) {
+      const listed = await call(`/projects?org_id=${encodeURIComponent(orgId)}&limit=20`);
+      if (!listed.ok || !Array.isArray(listed.body?.projects)) {
+        throw new Error(
+          `${neonError('Could not list Neon projects', listed)}. Or set GitHub secret NEON_PROJECT_ID.`,
+        );
+      }
+      projects.push(...listed.body.projects);
     }
     const named = projects.filter((p) => String(p.name ?? '').toLowerCase().includes('murlan'));
-    const pick = named.length === 1 ? named[0] : projects.length === 1 ? projects[0] : null;
+    const pick = named.length === 1 ? named[0] : named.length === 0 && projects.length === 1 ? projects[0] : null;
     if (!pick?.id) {
-      throw new Error('Set GitHub secret NEON_PROJECT_ID (Neon project settings).');
+      throw new Error('Set GitHub secret NEON_PROJECT_ID (Neon → Project settings → Project ID).');
     }
     projectId = pick.id;
   }
