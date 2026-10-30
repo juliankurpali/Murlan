@@ -1,20 +1,22 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { MatchApp } from './src/MatchApp';
+import { MotionConfig } from './src/motion';
+import { ensureWebFonts } from './src/theme';
+import { installWebAudioUnlock } from './src/feel/webAudio';
+import { installWebAlert } from './src/webSupport';
+
+ensureWebFonts();
+installWebAlert();
+installWebAudioUnlock();
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <MotionConfig reducedMotion="user">
+        <StatusBar style="light" />
+        <MatchApp />
+      </MotionConfig>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

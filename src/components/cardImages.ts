@@ -1,0 +1,66 @@
+import { ImageSourcePropType } from 'react-native';
+import { Card } from '../domain';
+
+/** Public-domain English-pattern faces (Byron Knoll), via hayeah/playing-cards-assets. */
+export const CARD_BACK: ImageSourcePropType = require('../../assets/cards/back.png');
+
+const FACES: Record<string, ImageSourcePropType> = {
+  S3: require('../../assets/cards/S3.png'),
+  S4: require('../../assets/cards/S4.png'),
+  S5: require('../../assets/cards/S5.png'),
+  S6: require('../../assets/cards/S6.png'),
+  S7: require('../../assets/cards/S7.png'),
+  S8: require('../../assets/cards/S8.png'),
+  S9: require('../../assets/cards/S9.png'),
+  S10: require('../../assets/cards/S10.png'),
+  SJ: require('../../assets/cards/SJ.png'),
+  SQ: require('../../assets/cards/SQ.png'),
+  SK: require('../../assets/cards/SK.png'),
+  SA: require('../../assets/cards/SA.png'),
+  S2: require('../../assets/cards/S2.png'),
+  H3: require('../../assets/cards/H3.png'),
+  H4: require('../../assets/cards/H4.png'),
+  H5: require('../../assets/cards/H5.png'),
+  H6: require('../../assets/cards/H6.png'),
+  H7: require('../../assets/cards/H7.png'),
+  H8: require('../../assets/cards/H8.png'),
+  H9: require('../../assets/cards/H9.png'),
+  H10: require('../../assets/cards/H10.png'),
+  HJ: require('../../assets/cards/HJ.png'),
+  HQ: require('../../assets/cards/HQ.png'),
+  HK: require('../../assets/cards/HK.png'),
+  HA: require('../../assets/cards/HA.png'),
+  H2: require('../../assets/cards/H2.png'),
+  D3: require('../../assets/cards/D3.png'),
+  D4: require('../../assets/cards/D4.png'),
+  D5: require('../../assets/cards/D5.png'),
+  D6: require('../../assets/cards/D6.png'),
+  D7: require('../../assets/cards/D7.png'),
+  D8: require('../../assets/cards/D8.png'),
+  D9: require('../../assets/cards/D9.png'),
+  D10: require('../../assets/cards/D10.png'),
+  DJ: require('../../assets/cards/DJ.png'),
+  DQ: require('../../assets/cards/DQ.png'),
+  DK: require('../../assets/cards/DK.png'),
+  DA: require('../../assets/cards/DA.png'),
+  D2: require('../../assets/cards/D2.png'),
+  C3: require('../../assets/cards/C3.png'),
+  C4: require('../../assets/cards/C4.png'),
+  C5: require('../../assets/cards/C5.png'),
+  C6: require('../../assets/cards/C6.png'),
+  C7: require('../../assets/cards/C7.png'),
+  C8: require('../../assets/cards/C8.png'),
+  C9: require('../../assets/cards/C9.png'),
+  C10: require('../../assets/cards/C10.png'),
+  CJ: require('../../assets/cards/CJ.png'),
+  CQ: require('../../assets/cards/CQ.png'),
+  CK: require('../../assets/cards/CK.png'),
+  CA: require('../../assets/cards/CA.png'),
+  C2: require('../../assets/cards/C2.png'),
+  JB: require('../../assets/cards/JB.png'),
+  JR: require('../../assets/cards/JR.png'),
+};
+
+export function cardFaceSource(card: Card): ImageSourcePropType {
+  return FACES[card.id] ?? CARD_BACK;
+}

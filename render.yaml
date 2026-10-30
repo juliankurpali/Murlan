@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: murlan-server
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev
+    startCommand: npm run server
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: ALLOWED_ORIGINS
+        value: https://juliankurpali.github.io
+      - key: DATABASE_URL
+        sync: false

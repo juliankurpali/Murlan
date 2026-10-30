@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Superdesign workspace (tool project ids)
+.superdesign/
+
+# local relay snapshots
+server/data/
