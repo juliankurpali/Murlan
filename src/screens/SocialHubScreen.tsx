@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Language } from '../application/types';
+import { KeyboardField } from '../components/KeyboardField';
 import { LandscapeFrame } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
 import { Friendship, GameSummary, PlatformNotice, PublicPlayer } from '../platform/types';
@@ -131,7 +132,7 @@ export function SocialHubScreen({
           </View>
           <View style={styles.col}>
             <Text style={styles.label}>{t(language, 'joinRoom')}</Text>
-            <TextInput
+            <KeyboardField
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={4}
@@ -140,6 +141,8 @@ export function SocialHubScreen({
               value={code}
               onChangeText={setCode}
               onSubmitEditing={join}
+              label={t(language, 'joinRoom')}
+              doneLabel={t(language, 'ok')}
               style={styles.input}
             />
             <UiButton label={t(language, 'joinRoom')} variant="secondary" onPress={join} />

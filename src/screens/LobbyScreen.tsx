@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Language } from '../application/types';
 import { ChatMessage } from '../online/chat';
 import { GameRoom, guestsAreReady, isRoomCode, localSeatOf, RoomSeat, roomIsReady, waitingReadyNames } from '../online/room';
 import { NetStatus } from '../online/net';
 import { PublicPlayer } from '../platform/types';
 import { ChatPanel } from '../components/ChatPanel';
+import { KeyboardField } from '../components/KeyboardField';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
 import { VoiceMic, voiceMicLabel } from '../components/VoiceMic';
@@ -105,7 +106,7 @@ export function LobbyScreen({
         <LandscapePane>
           <View style={styles.join}>
             <Text style={styles.label}>{t(language, 'joinRoom')}</Text>
-            <TextInput
+            <KeyboardField
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={4}
@@ -113,6 +114,9 @@ export function LobbyScreen({
               placeholderTextColor={colors.muted}
               value={code}
               onChangeText={setCode}
+              onSubmitEditing={join}
+              label={t(language, 'joinRoom')}
+              doneLabel={t(language, 'ok')}
               style={styles.input}
             />
             <UiButton label={t(language, 'joinRoom')} variant="secondary" onPress={join} />

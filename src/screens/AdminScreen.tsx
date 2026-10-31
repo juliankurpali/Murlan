@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Language } from '../application/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { KeyboardField } from '../components/KeyboardField';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
 import { CombinationType } from '../domain';
@@ -352,13 +353,15 @@ export function AdminScreen({ language, onBack }: Props) {
                   </Text>
                 </Pressable>
               ))}
-              <TextInput
+              <KeyboardField
                 value={query}
                 onChangeText={setQuery}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 placeholder={t(language, 'adminSearchCode')}
                 placeholderTextColor={colors.muted}
+                label={t(language, 'adminSearchCode')}
+                doneLabel={t(language, 'ok')}
                 style={styles.search}
               />
             </View>
@@ -396,7 +399,7 @@ export function AdminScreen({ language, onBack }: Props) {
         <LandscapePane wide>
           <View style={styles.unlock}>
             <Text style={styles.label}>{t(language, 'adminPassword')}</Text>
-            <TextInput
+            <KeyboardField
               value={password}
               onChangeText={setPassword}
               onSubmitEditing={unlock}
@@ -406,6 +409,8 @@ export function AdminScreen({ language, onBack }: Props) {
               secureTextEntry
               placeholder={t(language, 'adminPassword')}
               placeholderTextColor={colors.muted}
+              label={t(language, 'adminPassword')}
+              doneLabel={t(language, 'ok')}
               style={styles.input}
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}

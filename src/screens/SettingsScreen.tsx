@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AppSettings, Language, VoiceMode } from '../application/types';
+import { KeyboardField } from '../components/KeyboardField';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { UiButton } from '../components/UiButton';
@@ -94,12 +95,14 @@ export function SettingsScreen({
           {player ? (
             <>
               <Text style={styles.label}>{t(language, 'username')}</Text>
-              <TextInput
+              <KeyboardField
                 autoCapitalize="none"
                 autoCorrect={false}
                 maxLength={16}
                 value={username}
                 onChangeText={(value) => setUsername(normalizeUsername(value))}
+                label={t(language, 'username')}
+                doneLabel={t(language, 'ok')}
                 style={styles.field}
               />
               {onRename ? (

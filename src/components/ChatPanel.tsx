@@ -8,13 +8,13 @@ import {
   type ScrollViewInstance,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Language } from '../application/types';
 import { ChatMessage, sanitizeChat } from '../online/chat';
 import { t } from '../i18n';
 import { colors, fonts, radius } from '../theme';
+import { KeyboardField } from './KeyboardField';
 
 type Props = {
   language: Language;
@@ -121,7 +121,7 @@ export function ChatPanel({
         )}
       </ScrollView>
       <View style={styles.composer}>
-        <TextInput
+        <KeyboardField
           value={draft}
           onChangeText={setDraft}
           placeholder={t(language, 'chatPlaceholder')}
@@ -129,6 +129,12 @@ export function ChatPanel({
           maxLength={140}
           returnKeyType="send"
           onSubmitEditing={submit}
+          label={t(language, 'chat')}
+          accessory={
+            <Pressable accessibilityRole="button" onPress={submit} style={styles.send}>
+              <Text style={styles.sendLabel}>{t(language, 'sendChat')}</Text>
+            </Pressable>
+          }
           style={styles.input}
         />
         <Pressable accessibilityRole="button" onPress={submit} style={styles.send}>
