@@ -49,7 +49,6 @@ export type ClientMessage =
   | { t: 'mute'; muted: boolean }
   | { t: 'speaking'; on: boolean }
   | { t: 'voiceStatus'; available: boolean }
-  | { t: 'voice'; pcm: string; rate?: number }
   | { t: 'chat'; text: string };
 
 export type ServerMessage =
@@ -69,7 +68,6 @@ export type ServerMessage =
       cards?: string[];
       cardId?: string;
     }
-  | { t: 'voice'; seat: SeatId; pcm: string; rate?: number }
   | { t: 'chat'; id: string; seat: SeatId; name: string; text: string; at: number }
   | { t: 'chatHistory'; messages: ChatMessage[] }
   | { t: 'ended'; gameId: string; reason?: 'admin' | 'empty'; code?: string }

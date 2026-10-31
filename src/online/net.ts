@@ -1,10 +1,10 @@
-import { SeatId } from '../domain';
 import { Friendship, GameSummary, PlatformNotice, PublicPlayer, TablePayload } from '../platform/types';
 import { ChatMessage } from './chat';
 import { HEARTBEAT_MS } from './lifecycle';
 import { ClientMessage, ServerMessage, toGameRoom } from './protocol';
 import { relayUrls } from './relayUrl';
 import { GameRoom } from './room';
+import { decodeVoiceFrame, type VoiceFrame } from './voiceFrame';
 
 export type NetStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'restoring' | 'failed' | 'down';
 
@@ -20,7 +20,7 @@ type Handlers = {
   onRoom?: (room: GameRoom) => void;
   onView?: (table: TablePayload) => void;
   onSocial?: (social: SocialPayload) => void;
-  onVoice?: (seat: SeatId, pcm: string, rate?: number) => void;
+  onVoice?: (frame: VoiceFrame) => void;
   onChat?: (message: ChatMessage) => void;
   onChatHistory?: (messages: ChatMessage[]) => void;
   onEnded?: (gameId: string, reason?: 'admin' | 'empty', code?: string) => void;
@@ -48,6 +48,34 @@ function setStatus(next: NetStatus) {
 function send(message: ClientMessage) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
+  }
+}
+
+function sendBytes(bytes: Uint8Array) {
+  if (socket && socket.readyState === WebSocket.OPEN && bytes.byteLength > 0) {
+    socket.send(bytes);
+  }
+}
+
+function handleBinary(data: ArrayBuffer | Blob | ArrayBufferView) {
+  const consume = (buffer: ArrayBuffer) => {
+    const frame = decodeVoiceFrame(new Uint8Array(buffer));
+    if (frame) {
+      handlers.onVoice?.(frame);
+    }
+  };
+  if (data instanceof ArrayBuffer) {
+    consume(data);
+    return;
+  }
+  if (ArrayBuffer.isView(data)) {
+    const copy = new Uint8Array(data.byteLength);
+    copy.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    consume(copy.buffer);
+    return;
+  }
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    void data.arrayBuffer().then(consume).catch(() => undefined);
   }
 }
 
@@ -109,10 +137,6 @@ function handle(message: ServerMessage) {
     });
     return;
   }
-  if (message.t === 'voice') {
-    handlers.onVoice?.(message.seat, message.pcm, message.rate);
-    return;
-  }
   if (message.t === 'chat') {
     handlers.onChat?.({
       id: message.id,
@@ -160,9 +184,14 @@ function tryUrl(url: string): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
     const candidate = new WebSocket(url);
+    candidate.binaryType = 'arraybuffer';
     candidate.onmessage = (event) => {
+      if (typeof event.data !== 'string') {
+        handleBinary(event.data as ArrayBuffer | Blob);
+        return;
+      }
       try {
-        handle(JSON.parse(String(event.data)) as ServerMessage);
+        handle(JSON.parse(event.data) as ServerMessage);
       } catch {
         /* ignore */
       }
@@ -335,8 +364,8 @@ export function sendVoiceStatus(available: boolean) {
   send({ t: 'voiceStatus', available });
 }
 
-export function sendVoice(pcm: string, rate?: number) {
-  send({ t: 'voice', pcm, rate });
+export function sendVoice(frame: Uint8Array) {
+  sendBytes(frame);
 }
 
 export function sendChat(text: string) {

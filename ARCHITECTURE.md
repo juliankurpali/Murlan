@@ -118,7 +118,7 @@ Phones find the host from Expo Metro (`src/online/relayUrl.ts`), then `127.0.0.1
 | `social` / `room` / `view` / `chatHistory` | Server → client |
 | `error` | `auth`, `forbidden`, `room-full`, `rate-limit`, … |
 
-Rate limits cover HTTP, chat, friend requests, and non-voice socket messages. Voice is capped separately so PCM is not treated as spam. Hidden cards, other players’ sessions, and rooms you are not in are not sent.
+Rate limits cover HTTP, chat, friend requests, and non-voice socket messages. Voice binary frames are capped separately so talk is not treated as spam. Hidden cards, other players’ sessions, and rooms you are not in are not sent.
 
 Offline **Play Offline** still runs the engine on the phone against three bots. It is not resumed.
 
@@ -126,11 +126,11 @@ Offline **Play Offline** still runs the engine on the phone against three bots. 
 
 ## Layer 6 — Voice and chat
 
-Voice is **not WebRTC**. Microphone PCM shares the game WebSocket but is independent of match simulation: a denied mic never pauses the hand.
+Voice is **not WebRTC**. Encoded microphone frames share the game WebSocket as binary `MVS1` packets but are independent of match simulation: a denied mic never pauses the hand.
 
-Capture (`src/feel/VoiceChannel.tsx`, `voiceProcess.ts`): the mic tap delivers 100 ms float buffers at 48 kHz. Each buffer goes through a high-pass (rumble/DC), an anti-aliased downsample (24 kHz Natural, 16 kHz Clear), a speech gate, then AGC → soft-knee compressor → limiter, and is sent as 16-bit PCM. The gate compares each frame to the quietest level of the last 2.5 s, so steady hum stays out but anyone talking near the phone opens it; it holds through pauses between words, sends one frame of pre-roll so first syllables are not clipped, and fades the last frame out. AGC is frozen while the gate is closed, so silence is never pumped up. While another seat is playing through the speaker, the gate needs a louder voice to open, so their echo is not sent back to them.
+Capture (`src/feel/VoiceChannel.tsx`, `webAudio.ts`, `voiceProcess.ts`): on web the mic tap is an AudioWorklet (ScriptProcessor fallback). ~40 ms float buffers at 48 kHz go through a high-pass (rumble/DC), an anti-aliased downsample (24 kHz Natural, 16 kHz Clear), a speech gate, then AGC → soft-knee compressor → limiter. The gate compares each frame to the quietest level of the last 2.5 s, so steady hum stays out but anyone talking near the phone opens it; it holds through pauses between words, sends one frame of pre-roll so first syllables are not clipped, and fades the last frame out. AGC is frozen while the gate is closed, so silence is never pumped up. While another seat is playing through the speaker, the gate needs a louder voice to open, so their echo is not sent back to them. Open frames are sent as Opus (32 kbps VoIP) when `libopus-wasm` loads, otherwise 16-bit PCM, both on the same binary websocket frame.
 
-Playback (`voicePlay.ts`, `voiceJitter.ts`): each seat has a jitter line that waits ~180 ms, then queues ~200 ms WAV chunks back to back on an `AVQueuePlayer`-backed `AudioPlaylist` (falls back to timed players if unavailable). Late packets do not leave holes, packets never overlap, a stale backlog over 1.2 s is dropped, and an underrun rebuffers. Receivers run a gentle leveler (max 2.5×) so one quiet mic is not lost.
+Playback (`voicePlay.ts`, `voiceJitter.ts`): each seat has a jitter line that waits ~180 ms, then queues ~200 ms chunks back to back on the Web Audio clock (native falls back to `AudioPlaylist` / timed players). Late packets do not leave holes, packets never overlap, a stale backlog over 1.2 s is dropped, and an underrun rebuffers. Capture already levels the mic, so receivers do not run a second booster.
 
 Natural mode keeps a sensitive gate and long hold so far voices and laughter stay in; Clear voice uses a stricter gate, a higher high-pass, and more compression.
 
