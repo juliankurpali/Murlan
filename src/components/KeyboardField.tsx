@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import {
   Keyboard,
   Platform,
@@ -64,58 +64,38 @@ export function KeyboardField({
   editable = true,
   ...inputProps
 }: Props) {
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const [focused, setFocused] = useState(autoFocus);
   const frame = useKeyboardFrame();
-  const web = Platform.OS === 'web';
   const shown = masked(value, secureTextEntry);
   const mirror = shown.length > 0 ? shown : (placeholder ?? '');
-
-  const input = (lifted: boolean) => (
-    <TextInput
-      {...inputProps}
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={lifted ? colors.muted : placeholderTextColor}
-      autoFocus={lifted || autoFocus}
-      secureTextEntry={secureTextEntry}
-      editable={editable}
-      onFocus={(event) => {
-        setFocused(true);
-        onFocus?.(event);
-      }}
-      onBlur={(event) => {
-        setFocused(false);
-        onBlur?.(event);
-      }}
-      style={lifted ? styles.barField : style}
-    />
-  );
-
-  if (!web) {
-    return input(false);
-  }
+  const keyboardUp =
+    frame.inset > 20 || (frame.height > 0 && frame.height < 320) || (focused && frame.height > 0 && frame.height < frame.width);
+  const showBar = Platform.OS === 'web' && focused && keyboardUp;
 
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
-        disabled={!editable}
-        onPress={() => {
-          if (editable) {
-            setFocused(true);
-          }
+      <TextInput
+        {...inputProps}
+        ref={inputRef}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={placeholderTextColor}
+        autoFocus={autoFocus}
+        secureTextEntry={secureTextEntry}
+        editable={editable}
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
         }}
-        style={[styles.anchor, style]}
-      >
-        <Text
-          numberOfLines={1}
-          style={[styles.anchorText, style, shown.length === 0 && { color: placeholderTextColor }]}
-        >
-          {mirror}
-        </Text>
-      </Pressable>
-      {focused
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
+        style={style}
+      />
+      {showBar
         ? portalToBody(
             <View
               pointerEvents="box-none"
@@ -135,19 +115,22 @@ export function KeyboardField({
               }
             >
               <View accessibilityRole="alert" style={styles.bar}>
-                <View style={styles.barCopy}>
+                <Pressable
+                  style={styles.barCopy}
+                  onPress={() => inputRef.current?.focus()}
+                >
                   {label ? <Text style={styles.barLabel}>{label}</Text> : null}
-                  <Text numberOfLines={2} style={styles.barMirror}>
+                  <Text numberOfLines={2} style={[styles.barMirror, shown.length === 0 && styles.barPlaceholder]}>
                     {mirror}
                   </Text>
-                  {input(true)}
-                </View>
+                </Pressable>
                 {accessory}
                 {doneLabel ? (
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
                       Keyboard.dismiss();
+                      inputRef.current?.blur();
                       setFocused(false);
                     }}
                     style={styles.done}
@@ -164,14 +147,8 @@ export function KeyboardField({
 }
 
 const styles = StyleSheet.create({
-  anchor: {
-    justifyContent: 'center',
-  },
-  anchorText: {
-    color: colors.cream,
-  },
   lift: {
-    zIndex: 300,
+    zIndex: 400,
     justifyContent: 'flex-end',
     paddingHorizontal: 8,
     paddingBottom: 6,
@@ -193,8 +170,8 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: colors.cream,
     borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   barCopy: {
     flexGrow: 1,
@@ -206,27 +183,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.6,
-    paddingHorizontal: 4,
     marginBottom: 2,
   },
   barMirror: {
     color: colors.ink,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    lineHeight: 22,
-    paddingHorizontal: 4,
-    marginBottom: 2,
+    lineHeight: 24,
   },
-  barField: {
-    minHeight: 36,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.feltLight,
-    color: colors.ink,
-    paddingHorizontal: 10,
-    backgroundColor: colors.card,
-    fontSize: 16,
-    fontWeight: '700',
+  barPlaceholder: {
+    color: colors.muted,
   },
   done: {
     minHeight: 36,
