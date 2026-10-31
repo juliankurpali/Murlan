@@ -35,10 +35,10 @@ function combo(
   };
 }
 
-/** Sequence value for high interpretation. 2 does not connect; A is 14. */
-function highSequenceValue(card: StandardCard, rules: RulesConfig): number | null {
+/** Straight order: 2-3-4-…-K-A. 2 is still the strongest single, but in a scale it is 2. */
+export function highStraightRank(card: StandardCard, rules: RulesConfig): number | null {
   if (card.rank === 15) {
-    return null;
+    return 2;
   }
   if (card.rank === 14 && !rules.aceHighStraightEnabled) {
     return null;
@@ -46,8 +46,8 @@ function highSequenceValue(card: StandardCard, rules: RulesConfig): number | nul
   return card.rank;
 }
 
-/** Sequence value for ace-low: A=1, 2=2, 3–K keep rank. */
-function aceLowSequenceValue(card: StandardCard): number {
+/** Ace-low scale: A=1, then 2-3-4-…. Ace cannot also be high in the same play. */
+export function aceLowStraightRank(card: StandardCard): number {
   if (card.rank === 14) {
     return 1;
   }
@@ -79,7 +79,7 @@ function readSequence(cards: StandardCard[], rules: RulesConfig): SequenceRead |
     return null;
   }
 
-  const highValues = cards.map((card) => highSequenceValue(card, rules));
+  const highValues = cards.map((card) => highStraightRank(card, rules));
   if (highValues.every((value): value is number => value !== null) && isConsecutive(highValues)) {
     return { strength: Math.max(...highValues), kind: 'high' };
   }
@@ -94,7 +94,7 @@ function readSequence(cards: StandardCard[], rules: RulesConfig): SequenceRead |
     return null;
   }
 
-  const lowValues = cards.map(aceLowSequenceValue);
+  const lowValues = cards.map(aceLowStraightRank);
   if (isConsecutive(lowValues)) {
     return { strength: Math.max(...lowValues), kind: 'aceLow' };
   }

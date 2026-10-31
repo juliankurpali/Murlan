@@ -1,4 +1,4 @@
-import { DEFAULT_RULES, detectCombination, isCombination } from '../src/domain';
+import { DEFAULT_RULES, detectCombination, getLegalMoves, isCombination } from '../src/domain';
 import { C } from './helpers';
 
 describe('combination detection', () => {
@@ -51,10 +51,36 @@ describe('combination detection', () => {
     ).toBe(false);
   });
 
-  it('does not treat 2 as low unless the ace-low sequence includes A', () => {
-    expect(isCombination(detectCombination(C('S2', 'H3', 'D4', 'C5', 'S6'), DEFAULT_RULES))).toBe(
-      false,
+  it('allows 2-3-4-5-6-7 and 2 through Ace, ace-low A-2-3-4-5-6-7, but not Ace wrapping both ends', () => {
+    expect(
+      detectCombination(C('S2', 'H3', 'D4', 'C5', 'S6', 'H7'), DEFAULT_RULES),
+    ).toMatchObject({ type: 'straight', sequence: 'high', length: 6, strength: 7 });
+    expect(
+      detectCombination(C('SA', 'S2', 'H3', 'D4', 'C5', 'S6', 'H7'), DEFAULT_RULES),
+    ).toMatchObject({ type: 'straight', sequence: 'aceLow', length: 7, strength: 7 });
+    expect(
+      isCombination(
+        detectCombination(
+          C('SA', 'S2', 'H3', 'D4', 'C5', 'S6', 'H7', 'D8', 'C9', 'S10', 'HJ', 'DQ', 'CK', 'HA'),
+          DEFAULT_RULES,
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      detectCombination(
+        C('S2', 'H3', 'D4', 'C5', 'S6', 'H7', 'D8', 'C9', 'S10', 'HJ', 'DQ', 'CK', 'SA'),
+        DEFAULT_RULES,
+      ),
+    ).toMatchObject({ type: 'straight', sequence: 'high', length: 13, strength: 14 });
+    const hand = C('S2', 'H3', 'D4', 'C5', 'S6', 'H7', 'SA');
+    const legal = getLegalMoves(
+      hand,
+      { leaderSeat: 0, combination: null, lastSuccessfulSeat: null, passedSinceLastPlay: [] },
+      DEFAULT_RULES,
     );
+    const keys = legal.map((move) => [...move.map((card) => card.id)].sort().join(','));
+    expect(keys).toContain(['S2', 'H3', 'D4', 'C5', 'S6', 'H7'].sort().join(','));
+    expect(keys).toContain(['SA', 'S2', 'H3', 'D4', 'C5', 'S6', 'H7'].sort().join(','));
   });
 
   it('gates ace-low and ace-high by config', () => {

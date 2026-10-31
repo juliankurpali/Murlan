@@ -43,10 +43,10 @@ Jokers:
 
 ## 5. Straight edge cases
 - Aces can be high or low.
-- Low ace sequence: A-2-3-4-5.
-- High ace sequence: 10-J-Q-K-A.
-- 2 is otherwise a high card but is treated as rank 2 in the low-ace sequence.
-- Do not wrap sequences (for example, Q-K-A-2-3 is invalid).
+- In a scale, 2 counts as 2 even though it is the strongest standard single: 2-3-4-5-6-7 is legal, and so is 2-3-4-5-6-7-8-9-10-J-Q-K-A.
+- Low ace sequence: A-2-3-4-5 and longer A-2-3-… (for example A-2-3-4-5-6-7).
+- High ace sequence: 10-J-Q-K-A (Ace is the top card).
+- Do not wrap sequences. Q-K-A-2-3 is invalid. A-2-3-…-Q-K-A is invalid (Ace cannot be both ends).
 - Jokers cannot complete or substitute into a straight.
 - Compare straight strength by its top card under the selected sequence interpretation.
 - If a straight has multiple possible interpretations, choose the legal interpretation that gives it the correct lowest/highest comparison according to the explicit sequence; add tests.
@@ -141,6 +141,6 @@ At minimum test:
 3. Is 3♠ the required opening card? Or is it another low card?
 4. How are ties handled if multiple players finish on the same play?
 5. Does 2v2 have any special team bonus/scoring beyond adding partners' points?
-6. Does the 2 count as low in A-2-3-4-5 only, or are other sequences permitted?
+6. Confirmed: 2 counts as 2 in any scale (2-3-4-5-6-7 and 2-…-A). Ace-low A-2-3-… is also legal. Ace cannot wrap both ends.
 
 Do not block prototype development on these questions. Keep uncertain rules configurable and document defaults.

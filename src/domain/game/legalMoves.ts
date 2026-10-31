@@ -1,7 +1,7 @@
 import { Card, StandardCard, StandardRank } from '../cards/types';
 import { RulesConfig } from '../rules/types';
 import { canBeat } from './beating';
-import { detectCombination } from './combinations';
+import { aceLowStraightRank, detectCombination, highStraightRank } from './combinations';
 import { Combination, TrickState } from './types';
 import { isCombination } from './types';
 
@@ -104,15 +104,13 @@ function generateStraightsAndFlushes(hand: Card[], rules: RulesConfig): Card[][]
   const cards = standardCards(hand);
   const byRank = new Map<number, StandardCard[]>();
   for (const card of cards) {
-    if (card.rank === 15) {
+    const value = highStraightRank(card, rules);
+    if (value === null) {
       continue;
     }
-    if (card.rank === 14 && !rules.aceHighStraightEnabled) {
-      continue;
-    }
-    const list = byRank.get(card.rank) ?? [];
+    const list = byRank.get(value) ?? [];
     list.push(card);
-    byRank.set(card.rank, list);
+    byRank.set(value, list);
   }
 
   const highWindows = consecutiveWindows([...byRank.keys()], 5);
@@ -121,14 +119,7 @@ function generateStraightsAndFlushes(hand: Card[], rules: RulesConfig): Card[][]
   if (rules.aceLowStraightEnabled) {
     const lowByRank = new Map<number, StandardCard[]>();
     for (const card of cards) {
-      let value: number;
-      if (card.rank === 14) {
-        value = 1;
-      } else if (card.rank === 15) {
-        value = 2;
-      } else {
-        value = card.rank;
-      }
+      const value = aceLowStraightRank(card);
       const list = lowByRank.get(value) ?? [];
       list.push(card);
       lowByRank.set(value, list);
