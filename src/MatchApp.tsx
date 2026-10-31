@@ -30,6 +30,9 @@ import {
   toPublicView,
 } from './domain';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { FullscreenMark } from './components/FullscreenMark';
+import { TermsGate } from './components/TermsGate';
+import { UsernamePrompt } from './components/UsernamePrompt';
 import { RotateHint } from './components/RotateHint';
 import { configureFeel, feel, startTableMusic, stopTableMusic } from './feel';
 import { VoiceChannel, type MicCaptureStatus } from './feel/VoiceChannel';
@@ -54,11 +57,12 @@ import { adminFlagFromLink, clearAdminFromAddressBar, clearJoinFromAddressBar, j
 import { botSeatsOf, GameRoom, localSeatOf } from './online/room';
 import * as Linking from 'expo-linking';
 import { t, tError } from './i18n';
-import { isUsername, normalizeUsername } from './platform/ids';
+import { isGeneratedUsername, isUsername, normalizeUsername } from './platform/ids';
 import { Friendship, GameSummary, JoinOutcome, MatchHistoryRow, PlatformNotice, PublicPlayer } from './platform/types';
 import { matchFromView } from './platform/viewMatch';
 import { AdminScreen } from './screens/AdminScreen';
 import { HandResultScreen } from './screens/HandResultScreen';
+import { LegalScreen } from './screens/LegalScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
@@ -70,12 +74,16 @@ import { TableScreen } from './screens/TableScreen';
 import {
   clearMatch,
   loadAuth,
+  loadLegalVersion,
   loadPlayerKey,
   loadSettings,
   loadTableSession,
+  loadUsernamePrompt,
   saveAuth,
+  saveLegalVersion,
   saveSettings,
   saveTableSession,
+  saveUsernamePrompt,
 } from './storage';
 import {
   claimSeat,
@@ -98,6 +106,8 @@ import {
   setLobbyReady,
   inviteToGame,
 } from './social/api';
+import { TERMS_VERSION } from './legal';
+import type { LegalKind } from './legal/types';
 import { colors, motion } from './theme';
 import {
   fullscreenAvailable,
@@ -108,14 +118,29 @@ import {
 } from './webFullscreen';
 
 type InvitePrompt = {
-  kind: 'join' | 'mid' | 'admit' | 'switch';
+  kind: 'join' | 'mid' | 'admit' | 'switch' | 'friend';
   name: string;
   gameId: string;
   code: string;
   fromId?: string;
+  requestId?: string;
 };
 
 type RoomResult = GameSummary | JoinOutcome;
+
+function durationForCurrentTurn(
+  match: GameState,
+  botSeats: number[],
+  localSeat: SeatId,
+  online: boolean,
+): number {
+  const botTurn = botSeats.includes(match.currentSeat);
+  if (!botTurn) {
+    return motion.humanTurnMs;
+  }
+  const action = !online ? peekBotAction(match, localSeat, botSeats) : null;
+  return action?.type === 'pass' ? motion.botPassMs : motion.botPlayMs;
+}
 
 export function MatchApp() {
   const [session, dispatch] = useReducer(sessionReducer, initialSession());
@@ -133,16 +158,24 @@ export function MatchApp() {
   const [profileHistory, setProfileHistory] = useState<MatchHistoryRow[]>([]);
   const [profileFriends, setProfileFriends] = useState<PublicPlayer[]>([]);
   const [invitePrompt, setInvitePrompt] = useState<InvitePrompt | null>(null);
+  const [endedPrompt, setEndedPrompt] = useState<{ code: string } | null>(null);
+  const [usernamePrompt, setUsernamePrompt] = useState<'first' | 'change' | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSaving, setUsernameSaving] = useState(false);
   const [joinWaiting, setJoinWaiting] = useState<string | null>(null);
   const screenRef = useRef(session.screen);
   const restoreRef = useRef(false);
   const settingsFromTable = useRef(false);
   const seenNoticeIds = useRef(new Set<string>());
+  const seenFriendRequestIds = useRef(new Set<string>());
   const noticesReady = useRef(false);
   const tableGameIdRef = useRef<string | null>(null);
+  const usernameFlagsRef = useRef({ seenFirst: false, nudgeDismissed: false });
   const startFreshRef = useRef<(factory: () => Promise<RoomResult>) => Promise<void>>(async () => undefined);
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
+  const [legalVersion, setLegalVersion] = useState<number | null>(null);
   const [fullScreenOn, setFullScreenOn] = useState(isFullscreen);
   const localSeat = localSeatOf(onlineRoom) as SeatId;
   const botSeats = botSeatsOf(onlineRoom);
@@ -182,14 +215,19 @@ export function MatchApp() {
 
   useEffect(() => {
     void (async () => {
-      const [settings, identity, auth, tableSession] = await Promise.all([
+      const [settings, identity, auth, tableSession, promptFlags, acceptedLegal] = await Promise.all([
         loadSettings(),
         loadPlayerKey(),
         loadAuth(),
         loadTableSession(),
+        loadUsernamePrompt(),
+        loadLegalVersion(),
       ]);
+      setLegalVersion(acceptedLegal);
       dispatch({ type: 'hydrate', match: null, settings });
       await clearMatch();
+      const hadSession = Boolean(auth?.token);
+      usernameFlagsRef.current = promptFlags;
       try {
         setApiToken(auth?.token ?? null);
         let player = null as PublicPlayer | null;
@@ -208,6 +246,21 @@ export function MatchApp() {
         const latest = await loadAuth();
         setMe(player);
         setSessionToken(latest?.token ?? auth?.token ?? null);
+        const generated = isGeneratedUsername(player.username);
+        if (!generated) {
+          if (!promptFlags.seenFirst || !promptFlags.nudgeDismissed) {
+            const next = { seenFirst: true, nudgeDismissed: true };
+            usernameFlagsRef.current = next;
+            void saveUsernamePrompt(next);
+          }
+        } else if (!hadSession && !promptFlags.seenFirst) {
+          const next = { ...promptFlags, seenFirst: true };
+          usernameFlagsRef.current = next;
+          void saveUsernamePrompt(next);
+          setUsernamePrompt('first');
+        } else if (!promptFlags.nudgeDismissed) {
+          setUsernamePrompt('change');
+        }
         await connectNet();
         if (tableSession?.gameId && !tableSession.parked) {
           restoreRef.current = true;
@@ -236,12 +289,21 @@ export function MatchApp() {
           detachFromTable();
         }
       },
-      onEnded: (gameId) => {
-        if (tableGameIdRef.current === gameId) {
-          detachFromTable();
+      onEnded: (gameId, reason, code) => {
+        if (tableGameIdRef.current !== gameId) {
+          return;
+        }
+        detachFromTable();
+        dispatch({ type: 'navigate', screen: 'home' });
+        if (reason === 'admin') {
+          setInvitePrompt(null);
+          setEndedPrompt({ code: code || '—' });
         }
       },
       onView: (table) => {
+        if (table.view.phase === 'matchComplete') {
+          setChat([]);
+        }
         setNextHandReady(table.nextHandReady ?? []);
         commitMatch(matchFromView(table.view));
         const restoring = restoreRef.current;
@@ -289,8 +351,11 @@ export function MatchApp() {
     };
     const gameOf = (item: PlatformNotice) => games.find((row) => row.id === item.gameId);
     const actionable = (item: PlatformNotice): boolean => {
+      if (item.read) {
+        return false;
+      }
       const game = gameOf(item);
-      if (item.read || !game || game.status !== 'lobby') {
+      if (!game || game.status !== 'lobby') {
         return false;
       }
       if (item.kind === 'join-request') {
@@ -307,11 +372,14 @@ export function MatchApp() {
     if (!noticesReady.current) {
       noticesReady.current = true;
       for (const item of inbox) {
-        if (actionable(item)) {
+        if (actionable(item) || item.kind === 'friend-request' || (item.kind === 'game-ended' && !item.read)) {
           continue;
         }
         seen.add(item.id);
-        if (!item.read && (item.kind === 'invite' || item.kind === 'join-request' || item.kind === 'seat-switch')) {
+        if (
+          !item.read &&
+          (item.kind === 'invite' || item.kind === 'join-request' || item.kind === 'seat-switch')
+        ) {
           handled.push(item.id);
         }
       }
@@ -320,10 +388,19 @@ export function MatchApp() {
       session.screen === 'table' || session.screen === 'handResult' || session.screen === 'lobby';
     const labelFor = (item: PlatformNotice) =>
       friends.find((row) => row.id === item.fromId)?.username ??
+      requests.find((row) => row.requesterId === item.fromId)?.fromUsername ??
       gameOf(item)?.seats.find((seat) => seat.userId === item.fromId)?.name ??
       'Player';
     const order = (item: PlatformNotice) =>
-      item.kind === 'join-request' ? 0 : item.kind === 'seat-switch' ? 1 : item.kind === 'invite' ? 2 : 3;
+      item.kind === 'game-ended'
+        ? -1
+        : item.kind === 'join-request'
+          ? 0
+          : item.kind === 'seat-switch'
+            ? 1
+            : item.kind === 'invite'
+              ? 2
+              : 3;
     const incoming = inbox.filter((item) => !seen.has(item.id)).sort((a, b) => order(a) - order(b));
     try {
       for (const item of incoming) {
@@ -331,12 +408,25 @@ export function MatchApp() {
           seen.add(item.id);
           continue;
         }
+        if (item.kind === 'game-ended') {
+          done(item);
+          if (item.gameId && tableGameIdRef.current === item.gameId) {
+            detachFromTable();
+            dispatch({ type: 'navigate', screen: 'home' });
+          }
+          if (!endedPrompt) {
+            const fromBody = item.body.match(/Room\s+(\S+)/)?.[1] ?? '';
+            setInvitePrompt(null);
+            setEndedPrompt({ code: fromBody || '—' });
+          }
+          return;
+        }
         if (item.kind === 'join-request' || item.kind === 'seat-switch' || item.kind === 'invite') {
           if (!actionable(item) || !item.gameId || !item.fromId) {
             done(item);
             continue;
           }
-          if (invitePrompt || (item.kind === 'invite' && busy)) {
+          if (invitePrompt || endedPrompt || (item.kind === 'invite' && busy)) {
             continue;
           }
           done(item);
@@ -371,7 +461,42 @@ export function MatchApp() {
     } finally {
       void markInboxRead(handled);
     }
-  }, [inbox, games, friends, me, session.screen, session.settings.language, invitePrompt]);
+  }, [
+    inbox,
+    games,
+    friends,
+    requests,
+    me,
+    session.screen,
+    session.settings.language,
+    invitePrompt,
+    endedPrompt,
+    detachFromTable,
+  ]);
+
+  useEffect(() => {
+    if (invitePrompt || endedPrompt || usernamePrompt || !me) {
+      return;
+    }
+    const pending = requests.find(
+      (row) =>
+        row.status === 'pending' &&
+        row.addresseeId === me.id &&
+        !seenFriendRequestIds.current.has(row.id),
+    );
+    if (!pending) {
+      return;
+    }
+    seenFriendRequestIds.current.add(pending.id);
+    setInvitePrompt({
+      kind: 'friend',
+      name: pending.fromUsername ?? 'Player',
+      gameId: '',
+      code: '',
+      fromId: pending.requesterId,
+      requestId: pending.id,
+    });
+  }, [requests, me, invitePrompt, endedPrompt, usernamePrompt]);
 
   useEffect(() => {
     configureFeel({
@@ -382,8 +507,10 @@ export function MatchApp() {
     setVoicePlaybackMode(session.settings.voiceMode);
   }, [session.settings.sound, session.settings.music, session.settings.haptics, session.settings.voiceMode]);
 
+  const voiceScreen =
+    session.screen === 'table' || session.screen === 'handResult' || session.screen === 'lobby';
   const micOpen = Boolean(
-    online && session.screen === 'table' && !(onlineRoom?.seats[localSeat]?.muted ?? true),
+    online && voiceScreen && !(onlineRoom?.seats[localSeat]?.muted ?? true),
   );
 
   useEffect(() => {
@@ -491,13 +618,8 @@ export function MatchApp() {
       return () => clearTimeout(handle);
     }
     const botTurn = botSeats.includes(match.currentSeat);
-    const action = !online && botTurn ? peekBotAction(match, localSeat, botSeats) : null;
     const dealDelay = match.history.length === 0 ? motion.dealMs : 0;
-    const duration = botTurn
-      ? action?.type === 'pass'
-        ? motion.botPassMs
-        : motion.botPlayMs
-      : motion.humanTurnMs;
+    const duration = durationForCurrentTurn(match, botSeats, localSeat, online);
     setTurnProgress(0);
     let tick: ReturnType<typeof setInterval> | undefined;
     let turnHandle: ReturnType<typeof setTimeout> | undefined;
@@ -533,6 +655,16 @@ export function MatchApp() {
   }, [turnKey, commitMatch, online, botSeats, localSeat]);
 
   const view = session.match ? toPublicView(session.match, localSeat) : null;
+  const turnRemainingSec =
+    session.match && view && view.phase === 'playing'
+      ? Math.max(
+          0,
+          Math.ceil(
+            ((1 - turnProgress) * durationForCurrentTurn(session.match, botSeats, localSeat, online)) /
+              1000,
+          ),
+        )
+      : 0;
   const exchanging = session.match?.phase === 'exchanging';
   const legalMoves = useMemo(
     () => (session.match && session.match.phase === 'playing' ? legalMovesForSeat(session.match, localSeat) : []),
@@ -563,8 +695,8 @@ export function MatchApp() {
       : null;
   const selectionLegal = selectedCards.length === 0 ? null : selectionError === null;
 
-  const beginMatch = (mode: Parameters<typeof startMatch>[0], language: AppSettings['language']) => {
-    const match = startMatch(mode);
+  const beginMatch = (language: AppSettings['language']) => {
+    const match = startMatch();
     dispatch({ type: 'setSettings', settings: { language } });
     void saveSettings({ ...session.settings, language });
     commitMatch(match);
@@ -709,6 +841,25 @@ export function MatchApp() {
     });
   }, [onlineRoom, localSeat, netStatus, micStatus]);
 
+  const toggleMute = useCallback(() => {
+    const occupant = onlineRoom?.seats[localSeat];
+    if (!occupant || occupant.isBot) {
+      return;
+    }
+    void (async () => {
+      if (occupant.muted) {
+        const permission = await AudioModule.requestRecordingPermissionsAsync();
+        if (!permission.granted) {
+          setMicStatus('denied');
+          sendVoiceStatus(false);
+          Alert.alert(t(language, 'voice'), t(language, 'micDenied'));
+          return;
+        }
+      }
+      sendMute(!occupant.muted);
+    })();
+  }, [onlineRoom, localSeat, language]);
+
   const roomFrom = (result: RoomResult): { game: GameSummary; pending: boolean } => {
     if ('pending' in result) {
       return { game: result.game, pending: Boolean(result.pending) };
@@ -808,28 +959,17 @@ export function MatchApp() {
             view.currentSeat === localSeat && (view.phase === 'playing' || view.phase === 'exchanging')
           }
           turnProgress={turnProgress}
+          turnRemainingSec={turnRemainingSec}
+          turnDurationMs={
+            session.match
+              ? durationForCurrentTurn(session.match, botSeats, localSeat, online)
+              : motion.humanTurnMs
+          }
           localSeat={localSeat}
           roomSeats={tableSeats}
           chat={online ? chat : []}
           onSendChat={online ? sendChat : undefined}
-          onToggleMute={() => {
-            const occupant = onlineRoom?.seats[localSeat];
-            if (!occupant) {
-              return;
-            }
-            void (async () => {
-              if (occupant.muted) {
-                const permission = await AudioModule.requestRecordingPermissionsAsync();
-                if (!permission.granted) {
-                  setMicStatus('denied');
-                  sendVoiceStatus(false);
-                  Alert.alert(t(language, 'voice'), t(language, 'micDenied'));
-                  return;
-                }
-              }
-              sendMute(!occupant.muted);
-            })();
-          }}
+          onToggleMute={toggleMute}
           humanAppearance={{
             profileUri: session.settings.profileUri,
             tone: 0,
@@ -845,8 +985,6 @@ export function MatchApp() {
             settingsFromTable.current = true;
             dispatch({ type: 'navigate', screen: 'settings' });
           }}
-          fullscreenLabel={fullscreenLabel}
-          onFullscreen={showFullscreen ? goFullscreen : undefined}
         />
       ) : (
         <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
@@ -854,7 +992,6 @@ export function MatchApp() {
             <HomeScreen
               language={language}
               canResume={canResume}
-              fullscreenLabel={fullscreenLabel}
               onOnline={() => {
                 setNetError(null);
                 dispatch({ type: 'navigate', screen: 'social' });
@@ -866,7 +1003,8 @@ export function MatchApp() {
                 settingsFromTable.current = false;
                 dispatch({ type: 'navigate', screen: 'settings' });
               }}
-              onFullscreen={showFullscreen ? goFullscreen : undefined}
+              onTerms={() => setLegalOpen('terms')}
+              onPrivacy={() => setLegalOpen('privacy')}
             />
           ) : null}
           {session.screen === 'social' ? (
@@ -890,7 +1028,7 @@ export function MatchApp() {
                 dispatch({ type: 'navigate', screen: 'profile' });
               }}
               waitingJoin={joinWaiting}
-              onCreate={(mode) => void startFreshRoom(() => createGame(mode))}
+              onCreate={() => void startFreshRoom(() => createGame())}
               onJoin={(code) => void startFreshRoom(() => joinGame(code))}
               onOpenGame={(game) => {
                 if (game.joinPending) {
@@ -932,12 +1070,16 @@ export function MatchApp() {
           {session.screen === 'lobby' ? (
             <LobbyScreen
               language={language}
-              room={onlineRoom}
+              room={
+                onlineRoom && tableSeats
+                  ? { ...onlineRoom, seats: tableSeats }
+                  : onlineRoom
+              }
               status={netStatus}
               error={netError}
               friends={friends}
               onBack={leaveOnline}
-              onHost={() => void startFreshRoom(() => createGame('2v2'))}
+              onHost={() => void startFreshRoom(() => createGame())}
               onJoin={(code) => void startFreshRoom(() => joinGame(code))}
               onRespondJoin={(fromId, accept) => {
                 if (onlineRoom?.id) {
@@ -1019,6 +1161,7 @@ export function MatchApp() {
               }}
               chat={chat}
               onSendChat={sendChat}
+              onToggleMute={toggleMute}
             />
           ) : null}
           {session.screen === 'setup' ? (
@@ -1041,6 +1184,8 @@ export function MatchApp() {
               onNextHand={dealNext}
               nextHandReady={youReadyForNext}
               waitingFor={waitingForNextHand}
+              roomSeats={tableSeats}
+              onToggleMute={toggleMute}
               onMenu={leaveTable}
               onPlayAgain={() => {
                 if (online) {
@@ -1063,6 +1208,8 @@ export function MatchApp() {
               settings={session.settings}
               player={me}
               onChange={changeSettings}
+              onTerms={() => setLegalOpen('terms')}
+              onPrivacy={() => setLegalOpen('privacy')}
               onRename={(username) => {
                 const next = normalizeUsername(username);
                 if (me && next === me.username) {
@@ -1103,9 +1250,82 @@ export function MatchApp() {
         onSpeaking={sendSpeaking}
         onStatus={onMicStatus}
       />
+      {showFullscreen && fullscreenLabel ? (
+        <FullscreenMark
+          label={fullscreenLabel}
+          active={fullScreenOn && fullscreenKind() !== 'home-screen'}
+          onPress={goFullscreen}
+        />
+      ) : null}
+      {legalVersion !== null && legalVersion < TERMS_VERSION && !legalOpen ? (
+        <TermsGate
+          language={language}
+          onLanguage={(next) => changeSettings({ language: next })}
+          onAccept={() => {
+            setLegalVersion(TERMS_VERSION);
+            void saveLegalVersion(TERMS_VERSION);
+          }}
+          onOpenTerms={() => setLegalOpen('terms')}
+          onOpenPrivacy={() => setLegalOpen('privacy')}
+        />
+      ) : null}
+      <UsernamePrompt
+        visible={Boolean(usernamePrompt) && (legalVersion === null || legalVersion >= TERMS_VERSION) && !legalOpen}
+        kind={usernamePrompt ?? 'first'}
+        language={language}
+        currentName={me?.username ?? ''}
+        error={usernameError}
+        saving={usernameSaving}
+        onSkip={() => {
+          if (usernamePrompt === 'change') {
+            const next = { seenFirst: true, nudgeDismissed: true };
+            usernameFlagsRef.current = next;
+            void saveUsernamePrompt(next);
+          }
+          setUsernameError(null);
+          setUsernamePrompt(null);
+        }}
+        onSave={(username) => {
+          if (!isUsername(username)) {
+            setUsernameError(t(language, 'badUsername'));
+            return;
+          }
+          if (me && username === me.username) {
+            const next = { seenFirst: true, nudgeDismissed: true };
+            usernameFlagsRef.current = next;
+            void saveUsernamePrompt(next);
+            setUsernameError(null);
+            setUsernamePrompt(null);
+            return;
+          }
+          setUsernameSaving(true);
+          void patchMe({ username })
+            .then((result) => {
+              setMe(result.player);
+              const next = { seenFirst: true, nudgeDismissed: true };
+              usernameFlagsRef.current = next;
+              void saveUsernamePrompt(next);
+              setUsernameError(null);
+              setUsernamePrompt(null);
+            })
+            .catch((error: unknown) => setUsernameError(tError(language, error)))
+            .finally(() => setUsernameSaving(false));
+        }}
+      />
       <ConfirmDialog
-        visible={Boolean(invitePrompt)}
-        overlayDismisses={invitePrompt?.kind !== 'admit' && invitePrompt?.kind !== 'switch'}
+        visible={Boolean(endedPrompt)}
+        overlayDismisses
+        title={t(language, 'gameEndedTitle')}
+        body={t(language, 'gameEndedBody', { code: endedPrompt?.code || '—' })}
+        confirmLabel={t(language, 'ok')}
+        onCancel={() => setEndedPrompt(null)}
+        onConfirm={() => setEndedPrompt(null)}
+      />
+      <ConfirmDialog
+        visible={Boolean(invitePrompt) && !endedPrompt}
+        overlayDismisses={
+          invitePrompt?.kind !== 'admit' && invitePrompt?.kind !== 'switch' && invitePrompt?.kind !== 'friend'
+        }
         title={
           invitePrompt?.kind === 'join'
             ? t(language, 'joinTheRoom')
@@ -1113,7 +1333,9 @@ export function MatchApp() {
               ? t(language, 'joinRequests')
               : invitePrompt?.kind === 'switch'
                 ? t(language, 'switchSeats')
-                : t(language, 'playingNow')
+                : invitePrompt?.kind === 'friend'
+                  ? t(language, 'friendRequests')
+                  : t(language, 'playingNow')
         }
         body={
           invitePrompt?.kind === 'join'
@@ -1128,14 +1350,16 @@ export function MatchApp() {
                 })
               : invitePrompt?.kind === 'switch'
                 ? t(language, 'wantsToSwitch', { name: invitePrompt.name })
-                : t(language, 'friendMidGame', { name: invitePrompt?.name ?? '' })
+                : invitePrompt?.kind === 'friend'
+                  ? t(language, 'friendRequestBody', { name: invitePrompt.name })
+                  : t(language, 'friendMidGame', { name: invitePrompt?.name ?? '' })
         }
         confirmLabel={
           invitePrompt?.kind === 'join'
             ? t(language, 'joinTheRoom')
             : invitePrompt?.kind === 'admit'
               ? t(language, 'allowJoin')
-              : invitePrompt?.kind === 'switch'
+              : invitePrompt?.kind === 'switch' || invitePrompt?.kind === 'friend'
                 ? t(language, 'accept')
                 : t(language, 'ok')
         }
@@ -1144,7 +1368,9 @@ export function MatchApp() {
             ? t(language, 'notNow')
             : invitePrompt?.kind === 'admit' || invitePrompt?.kind === 'switch'
               ? t(language, 'denyJoin')
-              : undefined
+              : invitePrompt?.kind === 'friend'
+                ? t(language, 'reject')
+                : undefined
         }
         onCancel={() => {
           const prompt = invitePrompt;
@@ -1154,6 +1380,9 @@ export function MatchApp() {
           }
           if (prompt?.kind === 'switch' && prompt.gameId && prompt.fromId) {
             void respondSwitch(prompt.gameId, prompt.fromId, false).catch(() => undefined);
+          }
+          if (prompt?.kind === 'friend' && prompt.requestId) {
+            void respondFriend(prompt.requestId, false).catch(() => undefined);
           }
         }}
         onConfirm={() => {
@@ -1171,6 +1400,12 @@ export function MatchApp() {
           if (prompt.kind === 'switch' && prompt.fromId) {
             void respondSwitch(prompt.gameId, prompt.fromId, true).catch((error: unknown) =>
               Alert.alert(t(language, 'switchSeats'), tError(language, error)),
+            );
+            return;
+          }
+          if (prompt.kind === 'friend' && prompt.requestId) {
+            void respondFriend(prompt.requestId, true).catch((error: unknown) =>
+              Alert.alert(t(language, 'friends'), tError(language, error)),
             );
             return;
           }
@@ -1204,6 +1439,16 @@ export function MatchApp() {
           />
         </SafeAreaView>
       ) : null}
+      {legalOpen ? (
+        <SafeAreaView style={styles.legalOverlay} edges={['top', 'right', 'bottom', 'left']}>
+          <LegalScreen
+            language={language}
+            kind={legalOpen}
+            onSwitch={setLegalOpen}
+            onBack={() => setLegalOpen(null)}
+          />
+        </SafeAreaView>
+      ) : null}
       <RotateHint language={language} />
     </View>
   );
@@ -1222,5 +1467,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: colors.room,
     zIndex: 30,
+  },
+  legalOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.room,
+    zIndex: 70,
   },
 });

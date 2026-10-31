@@ -1,5 +1,5 @@
 import { RulesConfig } from '../rules/types';
-import { GameState, MatchWinner, SeatId, SEATS, teamId } from './types';
+import { GameState, MatchWinner, SeatId, teamId } from './types';
 import { unfinishedSeats } from './seats';
 
 export type ScoreResult = {
@@ -17,8 +17,75 @@ export function teamScores(scores: [number, number, number, number]): { team0: n
   };
 }
 
+function permutations<T>(items: T[]): T[][] {
+  if (items.length <= 1) {
+    return [items.slice()];
+  }
+  const out: T[][] = [];
+  items.forEach((item, index) => {
+    const rest = items.slice(0, index).concat(items.slice(index + 1));
+    for (const perm of permutations(rest)) {
+      out.push([item, ...perm]);
+    }
+  });
+  return out;
+}
+
+function pointsForOrder(order: SeatId[], table: readonly number[]): [number, number, number, number] {
+  const points: [number, number, number, number] = [0, 0, 0, 0];
+  order.forEach((seat, index) => {
+    points[seat] = table[index] ?? 0;
+  });
+  return points;
+}
+
+/** Remaining seats, soonest-out first (fewest cards, then seat number). */
+export function remainingFinishOrder(state: GameState): SeatId[] {
+  return unfinishedSeats(state.finishOrder).slice().sort((a, b) => {
+    const byCards = state.hands[a].length - state.hands[b].length;
+    return byCards !== 0 ? byCards : a - b;
+  });
+}
+
+/**
+ * Unique winner already locked by remaining places, or null if the hand must continue.
+ * Does not require anyone to sit on exactly 21 — reaching the target is enough,
+ * and the other side must be unable to reach it.
+ */
+export function lockedMatchWinner(state: GameState, rules: RulesConfig = state.rules): MatchWinner | null {
+  if (state.finishOrder.length === 0) {
+    return null;
+  }
+  const rest = unfinishedSeats(state.finishOrder);
+  const table = rules.pointsByFinishOrder;
+  const assignments = rest.length === 0 ? [[]] : permutations(rest);
+  const target = state.targetScore;
+
+  let min0 = Infinity;
+  let max0 = -Infinity;
+  let min1 = Infinity;
+  let max1 = -Infinity;
+  for (const perm of assignments) {
+    const order = [...state.finishOrder, ...perm];
+    const pts = pointsForOrder(order, table);
+    const t0 = state.scores[0] + pts[0] + state.scores[2] + pts[2];
+    const t1 = state.scores[1] + pts[1] + state.scores[3] + pts[3];
+    min0 = Math.min(min0, t0);
+    max0 = Math.max(max0, t0);
+    min1 = Math.min(min1, t1);
+    max1 = Math.max(max1, t1);
+  }
+  if (min0 >= target && max1 < target) {
+    return 'team0';
+  }
+  if (min1 >= target && max0 < target) {
+    return 'team1';
+  }
+  return null;
+}
+
 export function scoreHand(state: GameState, rules: RulesConfig): ScoreResult {
-  const remaining = unfinishedSeats(state.finishOrder);
+  const remaining = remainingFinishOrder(state);
   const fullOrder = [...state.finishOrder, ...remaining];
   const pointsThisHand: [number, number, number, number] = [0, 0, 0, 0];
 
@@ -34,44 +101,7 @@ export function scoreHand(state: GameState, rules: RulesConfig): ScoreResult {
     state.scores[3] + pointsThisHand[3],
   ];
 
-  if (state.mode === '2v2') {
-    return scoreTeams(scores, pointsThisHand, state.targetScore, rules);
-  }
-  return scoreIndividuals(scores, pointsThisHand, state.targetScore, rules);
-}
-
-function scoreIndividuals(
-  scores: [number, number, number, number],
-  pointsThisHand: [number, number, number, number],
-  targetScore: number,
-  rules: RulesConfig,
-): ScoreResult {
-  const reached = SEATS.filter((seat) => scores[seat] >= targetScore);
-  if (reached.length >= 2) {
-    return {
-      pointsThisHand,
-      scores,
-      targetScore: targetScore + rules.tieTargetIncrement,
-      phase: 'handComplete',
-      winner: null,
-    };
-  }
-  if (reached.length === 1) {
-    return {
-      pointsThisHand,
-      scores,
-      targetScore,
-      phase: 'matchComplete',
-      winner: reached[0] as SeatId,
-    };
-  }
-  return {
-    pointsThisHand,
-    scores,
-    targetScore,
-    phase: 'handComplete',
-    winner: null,
-  };
+  return scoreTeams(scores, pointsThisHand, state.targetScore, rules);
 }
 
 function scoreTeams(

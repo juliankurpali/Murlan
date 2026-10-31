@@ -13,6 +13,7 @@ type Props = {
   combination: Combination | null;
   revealed: boolean;
   originSeat?: SeatId | null;
+  playedBy?: string | null;
   compact?: boolean;
 };
 
@@ -130,7 +131,14 @@ function FannedCard({
   );
 }
 
-export function TrickPile({ language, combination, revealed, originSeat = null, compact = false }: Props) {
+export function TrickPile({
+  language,
+  combination,
+  revealed,
+  originSeat = null,
+  playedBy = null,
+  compact = false,
+}: Props) {
   const cards: Card[] = combination?.cards ?? [];
   const glow = useRef(new Animated.Value(cards.length > 0 && revealed ? 1 : 0)).current;
 
@@ -182,27 +190,31 @@ export function TrickPile({ language, combination, revealed, originSeat = null, 
           ]}
         />
       )}
-      <View style={styles.trickCards}>
-        <AnimatePresence>
-          {cards.map((card, index) => (
-            <FannedCard
-              key={card.id}
-              card={card}
-              index={index}
-              count={cards.length}
-              language={language}
-              revealed={revealed}
-              originSeat={originSeat}
-              compact={compact}
-            />
-          ))}
-        </AnimatePresence>
-      </View>
-      {combination && revealed ? (
-        <View style={styles.lastHand}>
-          <Text style={styles.lastHandText}>{t(language, 'lastHandPlayed')}</Text>
+      <View style={styles.play}>
+        {combination && revealed && playedBy ? (
+          <View style={styles.playedBy} pointerEvents="none">
+            <Text style={styles.playedByName} numberOfLines={1}>
+              {playedBy}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.trickCards}>
+          <AnimatePresence>
+            {cards.map((card, index) => (
+              <FannedCard
+                key={card.id}
+                card={card}
+                index={index}
+                count={cards.length}
+                language={language}
+                revealed={revealed}
+                originSeat={originSeat}
+                compact={compact}
+              />
+            ))}
+          </AnimatePresence>
         </View>
-      ) : null}
+      </View>
     </View>
   );
 }
@@ -212,10 +224,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 4,
     overflow: 'visible',
     position: 'relative',
+  },
+  play: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  playedBy: {
+    position: 'absolute',
+    bottom: '100%',
+    marginBottom: 6,
+    alignItems: 'center',
+    maxWidth: 180,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(8, 18, 16, 0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.5)',
+    zIndex: 6,
+  },
+  playedByName: {
+    color: colors.goldHi,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textAlign: 'center',
   },
   glow: {
     position: 'absolute',
@@ -242,23 +278,5 @@ const styles = StyleSheet.create({
     minHeight: 74,
     paddingHorizontal: 12,
     position: 'relative',
-  },
-  lastHand: {
-    marginTop: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: 'rgba(8, 18, 16, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(232, 197, 71, 0.35)',
-    zIndex: 6,
-  },
-  lastHandText: {
-    color: colors.goldHi,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    textAlign: 'center',
   },
 });

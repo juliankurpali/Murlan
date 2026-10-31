@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
   base: {
     minHeight: 40,
     minWidth: 44,
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -99,9 +99,9 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.ink,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 1.8,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
     fontFamily: fonts.sans,
   },
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   },
   ghostLabel: {
     color: colors.gold,
-    letterSpacing: 1.8,
+    letterSpacing: 1.1,
   },
   goLabel: {
     color: '#fff',

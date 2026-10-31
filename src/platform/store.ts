@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { sanitizeChat } from '../online/chat';
 import { rememberIntent } from '../online/lifecycle';
-import { avatarFor, createRoomCode, isUsername, normalizeUsername, randomId, suggestUsername } from './ids';
+import { avatarFor, createRoomCode, isUsername, normalizeUsername, randomId, suggestUsername, withAiLabel } from './ids';
 import { hashIdentity, hashToken, isDigest, randomSessionToken, sameDigest } from './identity';
 import {
   AdminGameView,
@@ -190,6 +190,8 @@ export class PlatformStore {
     for (const game of parsed.games ?? []) {
       this.games.set(game.id, {
         ...game,
+        mode: '2v2',
+        chat: game.status === 'complete' ? [] : (game.chat ?? []),
         nextHandReady: game.nextHandReady ?? [],
         seats: game.seats.map((seat) => ({
           ...seat,
@@ -479,6 +481,17 @@ export class PlatformStore {
     this.notices = this.notices.slice(0, 300);
   }
 
+  notifyAdminEnded(game: PlatformGame) {
+    const seen = new Set<string>();
+    for (const seat of game.seats) {
+      if (!seat.userId || seen.has(seat.userId)) {
+        continue;
+      }
+      seen.add(seat.userId);
+      this.notify(seat.userId, 'game-ended', null, `Room ${game.code} was ended.`, game.id);
+    }
+  }
+
   inbox(userId: string): PlatformNotice[] {
     return this.notices.filter((row) => row.userId === userId).slice(0, 40);
   }
@@ -497,7 +510,7 @@ export class PlatformStore {
     }
   }
 
-  createGame(user: PlatformPlayer, mode: '2v2' | 'individual'): PlatformGame {
+  createGame(user: PlatformPlayer): PlatformGame {
     const codes = new Set([...this.games.values()].map((game) => game.code));
     const seats: PlatformGame['seats'] = [
       { userId: user.id, isBot: false, botName: null, connection: 'connected', muted: true, speaking: false, voiceAvailable: true, lobbyReady: true },
@@ -508,7 +521,7 @@ export class PlatformStore {
     const game: PlatformGame = {
       id: randomId('g'),
       code: createRoomCode(codes),
-      mode,
+      mode: '2v2',
       status: 'lobby',
       createdBy: user.id,
       createdAt: Date.now(),
@@ -908,7 +921,7 @@ export class PlatformStore {
       if (seat.userId || seat.isBot) {
         return seat;
       }
-      const name = names[bot] ?? `Bot ${bot + 1}`;
+      const name = withAiLabel(names[bot] ?? `Bot ${bot + 1}`);
       bot += 1;
       return {
         userId: null,
@@ -940,7 +953,9 @@ export class PlatformStore {
       seats: game.seats.map((seat) => {
         const player = seat.userId ? this.players.get(seat.userId) : null;
         return {
-          name: seat.isBot ? (seat.botName ?? player?.username ?? 'Bot') : (player?.username ?? seat.botName ?? 'Empty'),
+          name: seat.isBot
+            ? withAiLabel(seat.botName ?? player?.username ?? 'Bot')
+            : (player?.username ?? seat.botName ?? 'Empty'),
           userId: seat.userId,
           isBot: seat.isBot,
           connection: seat.connection,
@@ -984,7 +999,7 @@ export class PlatformStore {
         name: empty
           ? 'Empty'
           : seat.isBot
-            ? (seat.botName ?? player?.username ?? 'Bot')
+            ? withAiLabel(seat.botName ?? player?.username ?? 'Bot')
             : (player?.username ?? seat.botName ?? 'Empty'),
         isBot: seat.isBot,
         empty,
@@ -1014,10 +1029,9 @@ export class PlatformStore {
       handIndex: match ? match.handIndex + 1 : null,
       currentName: match ? (seats[match.currentSeat]?.name ?? null) : null,
       targetScore: match?.targetScore ?? null,
-      teamScores:
-        match?.mode === '2v2'
-          ? { team0: match.scores[0] + match.scores[2], team1: match.scores[1] + match.scores[3] }
-          : null,
+      teamScores: match
+        ? { team0: match.scores[0] + match.scores[2], team1: match.scores[1] + match.scores[3] }
+        : null,
       trick: match?.trick.combination?.type ?? null,
       chatLines: game.chat.length,
       humans,
@@ -1068,6 +1082,9 @@ export class PlatformStore {
   }
 
   chat(game: PlatformGame, user: PlatformPlayer, text: string) {
+    if (game.status === 'complete') {
+      return null;
+    }
     if (!this.rateOk(`chat:${user.id}`, 30, 10_000)) {
       throw new Error('rate-limit');
     }
@@ -1088,6 +1105,7 @@ export class PlatformStore {
       return;
     }
     game.status = 'complete';
+    game.chat = [];
     const winner = game.match.winner;
     for (const [index, seat] of game.seats.entries()) {
       if (!seat.userId) {
@@ -1106,11 +1124,7 @@ export class PlatformStore {
             : winner === index;
       if (won) {
         player.wins += 1;
-        if (game.mode === '2v2') {
-          player.teamWins += 1;
-        } else {
-          player.individualWins += 1;
-        }
+        player.teamWins += 1;
       } else {
         player.losses += 1;
       }

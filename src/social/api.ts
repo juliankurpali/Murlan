@@ -1,4 +1,3 @@
-import { MatchMode } from '../domain';
 import { apiRoots } from '../online/relayUrl';
 import {
   AdminSnapshot,
@@ -126,10 +125,10 @@ export async function blockPlayer(id: string) {
   return request(`/v1/friends/block/${id}`, { method: 'POST' });
 }
 
-export async function createGame(mode: MatchMode): Promise<GameSummary> {
+export async function createGame(): Promise<GameSummary> {
   const result = await request<{ game: GameSummary }>('/v1/games', {
     method: 'POST',
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify({}),
   });
   return result.game;
 }

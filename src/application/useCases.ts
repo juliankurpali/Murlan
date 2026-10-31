@@ -10,7 +10,6 @@ import {
   GameState,
   isRuleError,
   legalMovesForSeat,
-  MatchMode,
   mathRandomSource,
   RandomSource,
   RuleError,
@@ -20,8 +19,8 @@ import {
 } from '../domain';
 import { HUMAN_SEAT } from './types';
 
-export function startMatch(mode: MatchMode, random: RandomSource = mathRandomSource()): GameState {
-  return createGame({ mode, random });
+export function startMatch(random: RandomSource = mathRandomSource()): GameState {
+  return createGame({ random });
 }
 
 export function submitPlay(

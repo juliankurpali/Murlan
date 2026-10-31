@@ -4,7 +4,9 @@ import { Language } from '../application/types';
 import { LandscapeFrame } from '../components/LandscapeFrame';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { UiButton } from '../components/UiButton';
+import { VoiceMic, voiceMicLabel } from '../components/VoiceMic';
 import { placeForSeat, PublicMatchView, SeatId } from '../domain';
+import { RoomSeat } from '../online/room';
 import { seatName, t } from '../i18n';
 import { colors, fonts, seatToken, spacing } from '../theme';
 
@@ -25,14 +27,16 @@ type Props = {
   onPlayAgain: () => void;
   nextHandReady?: boolean;
   waitingFor?: string | null;
+  roomSeats?: RoomSeat[] | null;
+  onToggleMute?: () => void;
 };
 
 function winnerText(view: PublicMatchView, language: Language, localSeat: SeatId): string {
   if (view.winner === 'team0') {
-    return t(language, localSeat % 2 === 0 ? 'winnerTeamYou' : 'winnerTeamOpp');
+    return t(language, 'winnerTeam1');
   }
   if (view.winner === 'team1') {
-    return t(language, localSeat % 2 === 0 ? 'winnerTeamOpp' : 'winnerTeamYou');
+    return t(language, 'winnerTeam2');
   }
   if (view.winner === localSeat) {
     return t(language, 'winnerYou');
@@ -62,6 +66,8 @@ function PlayerRow({
   localSeat,
   appearance,
   name,
+  occupant,
+  onToggleMute,
 }: {
   seat: SeatId;
   view: PublicMatchView;
@@ -69,11 +75,22 @@ function PlayerRow({
   localSeat: SeatId;
   appearance: SeatAppearance;
   name: string;
+  occupant?: RoomSeat | null;
+  onToggleMute?: () => void;
 }) {
   const place = placeForSeat(seat, view.finishOrder);
   const handPts = view.lastHandPoints?.[seat] ?? 0;
   const total = view.scores[seat] ?? 0;
   const you = seat === localSeat;
+  const voice = occupant
+    ? {
+        muted: occupant.muted,
+        speaking: occupant.speaking,
+        available: occupant.voiceAvailable !== false,
+        canControl: Boolean(onToggleMute && occupant.isYou && !occupant.isBot),
+        onToggle: onToggleMute,
+      }
+    : null;
   return (
     <View style={[styles.row, you && styles.rowYou]}>
       <View style={[styles.avatar, { borderColor: seatToken[seat] }]}>
@@ -86,6 +103,16 @@ function PlayerRow({
       <Text style={[styles.player, you && styles.playerYou]} numberOfLines={1}>
         {name}
       </Text>
+      {voice ? (
+        <VoiceMic
+          muted={voice.muted}
+          speaking={voice.speaking}
+          available={voice.available}
+          canControl={voice.canControl}
+          onToggle={voice.onToggle}
+          accessibilityLabel={voiceMicLabel(language, voice)}
+        />
+      ) : null}
       <View style={[styles.placeChip, place === 1 && styles.placeFirst]}>
         <Text style={styles.placeText}>{place ? t(language, PLACE_KEYS[place - 1] ?? 'fourth') : '—'}</Text>
       </View>
@@ -105,6 +132,8 @@ function TeamCard({
   localSeat,
   appearances,
   names,
+  roomSeats,
+  onToggleMute,
 }: {
   label: string;
   score: number;
@@ -115,6 +144,8 @@ function TeamCard({
   localSeat: SeatId;
   appearances: SeatAppearance[];
   names?: Array<string | undefined>;
+  roomSeats?: RoomSeat[] | null;
+  onToggleMute?: () => void;
 }) {
   return (
     <View style={[styles.teamCard, { borderColor: color }]}>
@@ -140,6 +171,8 @@ function TeamCard({
           localSeat={localSeat}
           appearance={appearances[seat]!}
           name={playerName(language, seat, localSeat, names)}
+          occupant={roomSeats?.[seat]}
+          onToggleMute={onToggleMute}
         />
       ))}
     </View>
@@ -157,12 +190,14 @@ export function HandResultScreen({
   onPlayAgain,
   nextHandReady = false,
   waitingFor = null,
+  roomSeats = null,
+  onToggleMute,
 }: Props) {
   const appearances = ([0, 1, 2, 3] as SeatId[]).map((seat) => appearanceForSeat(seat, humanAppearance, localSeat));
   const matchOver = view.phase === 'matchComplete';
   const teams = view.teamScores;
   const yourTeam = localSeat % 2;
-  const teamOrder = yourTeam === 0 ? ([0, 1] as const) : ([1, 0] as const);
+  const teamOrder = [0, 1] as const;
   const action =
     view.phase === 'handComplete' ? (
       <UiButton
@@ -186,50 +221,28 @@ export function HandResultScreen({
           {matchOver ? winnerText(view, language, localSeat) : t(language, 'target', { score: view.targetScore })}
           {waitingFor ? `  ·  ${waitingFor}` : ''}
         </Text>
-        {teams ? (
-          <View style={styles.board}>
-            {teamOrder.map((team) => (
-              <TeamCard
-                key={team}
-                label={t(language, team === yourTeam ? 'teamYou' : 'teamOpp')}
-                score={team === 0 ? teams.team0 : teams.team1}
-                color={team === 0 ? colors.team1 : colors.team2}
-                seats={TEAM_SEATS[team]!}
-                view={view}
-                language={language}
-                localSeat={localSeat}
-                appearances={appearances}
-                names={names}
-              />
-            ))}
-          </View>
-        ) : (
-          <View style={styles.soloWrap}>
-            <View style={styles.soloCard}>
-              <View style={styles.colHead}>
-                <View style={styles.colAvatar} />
-                <View style={styles.colPlayer} />
-                <View style={styles.colPlace} />
-                <Text style={[styles.colLabel, styles.colPts]}>{t(language, 'thisHand')}</Text>
-                <Text style={[styles.colLabel, styles.colPts]}>{t(language, 'total')}</Text>
-              </View>
-              {([0, 1, 2, 3] as SeatId[])
-                .slice()
-                .sort((a, b) => (placeForSeat(a, view.finishOrder) ?? 9) - (placeForSeat(b, view.finishOrder) ?? 9))
-                .map((seat) => (
-                  <PlayerRow
-                    key={seat}
-                    seat={seat}
-                    view={view}
-                    language={language}
-                    localSeat={localSeat}
-                    appearance={appearances[seat]!}
-                    name={playerName(language, seat, localSeat, names)}
-                  />
-                ))}
-            </View>
-          </View>
-        )}
+        <View style={styles.board}>
+          {teamOrder.map((team) => (
+            <TeamCard
+              key={team}
+              label={
+                team === yourTeam
+                  ? `${t(language, team === 0 ? 'team1' : 'team2')} · ${t(language, 'you')}`
+                  : t(language, team === 0 ? 'team1' : 'team2')
+              }
+              score={team === 0 ? teams.team0 : teams.team1}
+              color={team === 0 ? colors.team1 : colors.team2}
+              seats={TEAM_SEATS[team]!}
+              view={view}
+              language={language}
+              localSeat={localSeat}
+              appearances={appearances}
+              names={names}
+              roomSeats={roomSeats}
+              onToggleMute={onToggleMute}
+            />
+          ))}
+        </View>
       </View>
     </LandscapeFrame>
   );

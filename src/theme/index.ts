@@ -45,6 +45,9 @@ export const spacing = {
   xl: 32,
 };
 
+/** Top-right fullscreen crown. Keep this much padding so buttons never sit under it. */
+export const markGutter = 48;
+
 export const radius = {
   sm: 10,
   md: 16,

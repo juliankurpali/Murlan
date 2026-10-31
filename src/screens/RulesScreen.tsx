@@ -55,11 +55,15 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   copy: {
+    flexGrow: 1,
+    justifyContent: 'center',
     gap: spacing.sm,
     paddingRight: spacing.sm,
     paddingBottom: spacing.sm,
   },
   table: {
+    flexGrow: 1,
+    justifyContent: 'center',
     gap: 2,
     paddingBottom: spacing.sm,
   },

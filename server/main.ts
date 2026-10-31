@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { applyUserIntent, autoAct, connectedHumans, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
 import { sameSecret } from '../src/platform/identity';
+import { withAiLabel } from '../src/platform/ids';
 import { PlatformStore } from '../src/platform/store';
 import { PlatformGame, PlatformPlayer } from '../src/platform/types';
 import { openPostgres, Persistence } from './persist';
@@ -155,7 +156,9 @@ function toRelayRoom(game: PlatformGame) {
       }
       const player = seat.userId ? store.players.get(seat.userId) : null;
       return {
-        name: seat.isBot ? (seat.botName ?? player?.username ?? 'Bot') : (player?.username ?? seat.botName ?? 'Empty'),
+        name: seat.isBot
+          ? withAiLabel(seat.botName ?? player?.username ?? 'Bot')
+          : (player?.username ?? seat.botName ?? 'Empty'),
         ready: Boolean(seat.userId || seat.isBot),
         lobbyReady: Boolean(seat.lobbyReady || seat.isBot || seat.userId === game.createdBy),
         isBot: seat.isBot,
@@ -218,7 +221,7 @@ function stopGame(game: PlatformGame) {
   timers.delete(game.id);
 }
 
-function notifyGameClosed(game: PlatformGame) {
+function notifyGameClosed(game: PlatformGame, reason?: 'admin' | 'empty') {
   const seen = new Set<string>();
   for (const seat of game.seats) {
     if (!seat.userId || seen.has(seat.userId)) {
@@ -231,7 +234,8 @@ function notifyGameClosed(game: PlatformGame) {
     }
     pushPlayer(seat.userId, social(player));
     for (const ws of playerSockets(seat.userId)) {
-      send(ws, { t: 'ended', gameId: game.id });
+      send(ws, { t: 'chatHistory', messages: [] });
+      send(ws, { t: 'ended', gameId: game.id, reason, code: game.code });
     }
   }
 }
@@ -338,9 +342,10 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       }
       forceEndGame(game);
       store.closeOpenJoins(game);
+      store.notifyAdminEnded(game);
       store.save();
       stopGame(game);
-      notifyGameClosed(game);
+      notifyGameClosed(game, 'admin');
       json(res, 200, store.adminSnapshot());
       return;
     }
@@ -450,9 +455,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       return;
     }
     if (req.method === 'POST' && path === '/v1/games') {
-      const payload = await body(req);
-      const mode = payload.mode === 'individual' ? 'individual' : '2v2';
-      const game = store.createGame(user, mode);
+      await body(req);
+      const game = store.createGame(user);
       json(res, 200, { game: store.summary(game, user.id) });
       return;
     }

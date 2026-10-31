@@ -42,6 +42,9 @@ type Props = {
   connectionLabel?: string | null;
   place?: number | null;
   placeLabel?: string | null;
+  remainingSec?: number;
+  turnDurationMs?: number;
+  turnToken?: string;
 };
 
 const CARD = { width: 26, height: 38 };
@@ -67,6 +70,9 @@ export function SeatRack({
   connectionLabel = null,
   place = null,
   placeLabel = null,
+  remainingSec = 0,
+  turnDurationMs,
+  turnToken,
 }: Props) {
   const { width, height } = useStageDimensions();
   const phone = isPhoneViewport(width, height);
@@ -97,6 +103,10 @@ export function SeatRack({
       voice={voice}
       connectionLabel={connectionLabel}
       turnLabel={isTurn && side !== 'south' ? t(language, 'turn') : null}
+      remainingSec={isTurn ? remainingSec : 0}
+      turnDurationMs={turnDurationMs}
+      turnToken={turnToken}
+      timerAbove={side !== 'south'}
       place={place}
       placeLabel={placeLabel}
     />

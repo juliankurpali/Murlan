@@ -120,7 +120,8 @@ export type NotifyKind =
   | 'join-accepted'
   | 'join-denied'
   | 'seat-switch'
-  | 'seat-switch-denied';
+  | 'seat-switch-denied'
+  | 'game-ended';
 
 export type PlatformNotice = {
   id: string;

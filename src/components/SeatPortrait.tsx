@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
 import { ConnectionState } from '../online/lifecycle';
-import { colors, fonts, hitSlop, motion } from '../theme';
+import { colors, fonts, motion } from '../theme';
 import { PlayerAvatar } from './PlayerAvatar';
-import { TurnClock } from './TurnClock';
+import { VoiceMic } from './VoiceMic';
 
 type Props = {
   name: string;
@@ -30,6 +30,10 @@ type Props = {
   } | null;
   connectionLabel?: string | null;
   turnLabel?: string | null;
+  remainingSec?: number;
+  timerAbove?: boolean;
+  turnDurationMs?: number;
+  turnToken?: string;
   place?: number | null;
   placeLabel?: string | null;
 };
@@ -44,7 +48,6 @@ export function SeatPortrait({
   finished,
   lastPlayed,
   partner,
-  turnProgress,
   teamLabel,
   size = 36,
   spotlight = false,
@@ -52,14 +55,68 @@ export function SeatPortrait({
   voice = null,
   connectionLabel = null,
   turnLabel = null,
+  remainingSec = 0,
+  timerAbove = true,
+  turnDurationMs = motion.humanTurnMs,
+  turnToken = '',
   place = null,
   placeLabel = null,
 }: Props) {
   const ring = size + 4;
+  const fill = useRef(new Animated.Value(1)).current;
+  const [trackWidth, setTrackWidth] = useState(72);
+  const [urgentTurn, setUrgentTurn] = useState(false);
+  const timer = isTurn ? (
+    <View
+      style={styles.barTrack}
+      onLayout={(event) => {
+        const next = event.nativeEvent.layout.width;
+        if (next > 0) {
+          setTrackWidth(next);
+        }
+      }}
+    >
+      <Animated.View
+        style={[
+          styles.barFill,
+          (urgentTurn || (remainingSec > 0 && remainingSec <= 5)) && styles.barUrgent,
+          {
+            width: fill.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, Math.max(trackWidth, 1)],
+            }),
+          },
+        ]}
+      />
+    </View>
+  ) : null;
   const pulse = useRef(new Animated.Value(0.55)).current;
-  const micPulse = useRef(new Animated.Value(1)).current;
-  const live = Boolean(voice && !voice.muted && voice.available !== false);
-  const talking = Boolean(live && voice?.speaking);
+
+  useEffect(() => {
+    fill.stopAnimation();
+    if (!isTurn) {
+      fill.setValue(1);
+      setUrgentTurn(false);
+      return;
+    }
+    fill.setValue(1);
+    setUrgentTurn(false);
+    const duration = Math.max(400, turnDurationMs);
+    const sub = fill.addListener(({ value }) => {
+      setUrgentTurn(value <= 5000 / duration);
+    });
+    const anim = Animated.timing(fill, {
+      toValue: 0,
+      duration,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    });
+    anim.start();
+    return () => {
+      anim.stop();
+      fill.removeListener(sub);
+    };
+  }, [isTurn, turnToken, turnDurationMs, fill]);
   const lit = isTurn || spotlight;
 
   useEffect(() => {
@@ -84,39 +141,6 @@ export function SeatPortrait({
     loop.start();
     return () => loop.stop();
   }, [lit, pulse]);
-
-  useEffect(() => {
-    if (!talking) {
-      micPulse.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(micPulse, {
-          toValue: 1.16,
-          duration: 220,
-          useNativeDriver: motion.nativeDriver,
-        }),
-        Animated.timing(micPulse, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: motion.nativeDriver,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [talking, micPulse]);
-
-  const micLabel = !voice
-    ? ''
-    : voice.muted
-      ? 'mic off'
-      : voice.available === false
-        ? 'mic unavailable'
-        : talking
-          ? 'mic live'
-          : 'mic on';
 
   return (
     <Animated.View
@@ -147,7 +171,6 @@ export function SeatPortrait({
             ]}
           />
         ) : null}
-        {isTurn ? <TurnClock progress={turnProgress} size={ring} /> : null}
         <View
           style={[
             styles.ring,
@@ -169,6 +192,7 @@ export function SeatPortrait({
         </View>
       </View>
       <View style={styles.meta}>
+        {timerAbove ? timer : null}
         <View style={styles.nameRow}>
           <Text style={[styles.name, isTurn && styles.nameTurn]} numberOfLines={1}>
             {name}
@@ -179,13 +203,14 @@ export function SeatPortrait({
             </View>
           ) : null}
         </View>
-        {turnLabel ? (
-          <Text style={styles.turnMark} numberOfLines={1}>
-            {turnLabel}
-          </Text>
-        ) : teamLabel ? (
+        {timerAbove ? null : timer}
+        {teamLabel ? (
           <Text style={[styles.team, { color: seatAccent }]} numberOfLines={1}>
             {teamLabel}
+          </Text>
+        ) : turnLabel && !isTurn ? (
+          <Text style={styles.turnMark} numberOfLines={1}>
+            {turnLabel}
           </Text>
         ) : null}
         {connectionLabel ? (
@@ -195,48 +220,24 @@ export function SeatPortrait({
         ) : null}
       </View>
       {voice ? (
-        <Animated.View style={{ transform: [{ scale: micPulse }] }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={micLabel}
-            accessibilityState={{ disabled: !voice.canControl, selected: live }}
-            disabled={!voice.canControl}
-            onPress={voice.canControl ? voice.onToggle : undefined}
-            hitSlop={hitSlop}
-            style={[
-              styles.mic,
-              live && styles.micOn,
-              talking && styles.micTalk,
-              voice.muted && styles.micMuted,
-              voice.available === false && !voice.muted && styles.micMissing,
-              !voice.canControl && styles.micLocked,
-            ]}
-          >
-            <MicGlyph live={live} talking={talking} muted={voice.muted} />
-            {talking ? (
-              <View style={styles.levels} pointerEvents="none">
-                <View style={[styles.bar, styles.barLow]} />
-                <View style={[styles.bar, styles.barMid]} />
-                <View style={[styles.bar, styles.barHigh]} />
-              </View>
-            ) : null}
-          </Pressable>
-        </Animated.View>
+        <VoiceMic
+          muted={voice.muted}
+          speaking={voice.speaking}
+          canControl={voice.canControl}
+          available={voice.available}
+          onToggle={voice.onToggle}
+          accessibilityLabel={
+            voice.muted
+              ? 'mic off'
+              : voice.available === false
+                ? 'mic unavailable'
+                : voice.speaking
+                  ? 'mic live'
+                  : 'mic on'
+          }
+        />
       ) : null}
     </Animated.View>
-  );
-}
-
-function MicGlyph({ live, talking, muted }: { live: boolean; talking: boolean; muted: boolean }) {
-  const ink = muted ? colors.muted : talking ? colors.goldHi : live ? colors.good : colors.cream;
-  return (
-    <View style={styles.glyph}>
-      <View style={[styles.capsule, { backgroundColor: ink }]} />
-      <View style={[styles.yoke, { borderColor: ink }]} />
-      <View style={[styles.stem, { backgroundColor: ink }]} />
-      <View style={[styles.foot, { backgroundColor: ink }]} />
-      {muted ? <View style={styles.slash} /> : null}
-    </View>
   );
 }
 
@@ -300,8 +301,8 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   meta: {
-    alignItems: 'flex-start',
-    minWidth: 52,
+    alignItems: 'stretch',
+    minWidth: 64,
     paddingRight: 4,
   },
   name: {
@@ -347,6 +348,23 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontFamily: fonts.sans,
   },
+  barTrack: {
+    alignSelf: 'stretch',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    overflow: 'hidden',
+    marginBottom: 3,
+    marginTop: 1,
+  },
+  barFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.goldHi,
+  },
+  barUrgent: {
+    backgroundColor: colors.danger,
+  },
   team: {
     fontSize: 10,
     fontWeight: '700',
@@ -357,111 +375,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.55,
     shadowRadius: 8,
   },
-  mic: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(12, 20, 18, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  micOn: {
-    borderColor: colors.good,
-    backgroundColor: 'rgba(46, 204, 113, 0.22)',
-  },
-  micTalk: {
-    borderColor: colors.gold,
-    backgroundColor: 'rgba(232, 197, 71, 0.32)',
-    shadowColor: colors.gold,
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-  },
   link: {
     color: colors.gold,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
-  },
-  micMuted: {
-    borderColor: 'rgba(224, 91, 76, 0.7)',
-    backgroundColor: 'rgba(224, 91, 76, 0.12)',
-  },
-  micMissing: {
-    borderColor: colors.danger,
-    opacity: 0.8,
-  },
-  micLocked: {
-    opacity: 0.85,
-  },
-  glyph: {
-    width: 12,
-    height: 16,
-    alignItems: 'center',
-  },
-  capsule: {
-    width: 7,
-    height: 9,
-    borderRadius: 4,
-  },
-  yoke: {
-    position: 'absolute',
-    top: 4,
-    width: 11,
-    height: 7,
-    borderWidth: 1.5,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 6,
-    borderBottomRightRadius: 6,
-  },
-  stem: {
-    position: 'absolute',
-    top: 11,
-    width: 1.5,
-    height: 3,
-    borderRadius: 1,
-  },
-  foot: {
-    position: 'absolute',
-    top: 14,
-    width: 8,
-    height: 1.5,
-    borderRadius: 1,
-  },
-  slash: {
-    position: 'absolute',
-    top: 2,
-    left: 5,
-    width: 1.6,
-    height: 13,
-    borderRadius: 1,
-    backgroundColor: colors.danger,
-    transform: [{ rotate: '28deg' }],
-  },
-  levels: {
-    position: 'absolute',
-    right: -5,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 1,
-    height: 10,
-  },
-  bar: {
-    width: 2,
-    borderRadius: 1,
-    backgroundColor: colors.goldHi,
-  },
-  barLow: {
-    height: 4,
-  },
-  barMid: {
-    height: 7,
-  },
-  barHigh: {
-    height: 10,
   },
 });

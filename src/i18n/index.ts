@@ -1,4 +1,5 @@
 import { Language } from '../application/types';
+import { withAiLabel } from '../platform/ids';
 import { en } from './en';
 import { sq } from './sq';
 
@@ -23,7 +24,8 @@ export function t(
 export function seatName(language: Language, seat: number): string {
   const keys = ['you', 'bot1', 'bot2', 'bot3'] as const;
   const key = keys[seat] ?? 'bot1';
-  return t(language, key);
+  const name = t(language, key);
+  return seat === 0 ? name : withAiLabel(name);
 }
 
 const ERROR_KEYS: Record<string, MessageKey> = {

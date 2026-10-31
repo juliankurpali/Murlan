@@ -8,6 +8,7 @@ import {
   mathRandomSource,
   toPublicView,
 } from '../domain';
+import { baseBotName, withAiLabel } from './ids';
 import { PlatformGame, TablePayload } from './types';
 
 const HUMAN_TURN_MS = 20_000;
@@ -15,8 +16,10 @@ const BOT_PLAY_MS = 1_200;
 const BOT_NAMES = ['Leka', 'Drita', 'Gjergj'];
 
 function unusedBotName(game: PlatformGame): string {
-  const used = new Set(game.seats.map((seat) => seat.botName).filter((name): name is string => Boolean(name)));
-  return BOT_NAMES.find((name) => !used.has(name)) ?? 'Bot';
+  const used = new Set(
+    game.seats.map((seat) => (seat.botName ? baseBotName(seat.botName) : '')).filter(Boolean),
+  );
+  return withAiLabel(BOT_NAMES.find((name) => !used.has(name)) ?? 'Bot');
 }
 
 export function seatOf(game: PlatformGame, userId: string): SeatId | null {
@@ -40,7 +43,8 @@ export function startMatch(game: PlatformGame) {
   if (game.seats.some((seat) => !seat.userId && !seat.isBot)) {
     throw new Error('seats-not-ready');
   }
-  game.match = createGame({ mode: game.mode, random: mathRandomSource() });
+  game.match = createGame({ random: mathRandomSource() });
+  game.mode = '2v2';
   game.nextHandReady = [];
   game.status = 'playing';
   game.updatedAt = Date.now();
@@ -218,6 +222,7 @@ export function forceEndGame(game: PlatformGame): boolean {
   }
   game.status = 'complete';
   game.updatedAt = Date.now();
+  game.chat = [];
   if (game.match && game.match.phase !== 'matchComplete') {
     game.match = { ...game.match, phase: 'matchComplete', winner: null };
   }

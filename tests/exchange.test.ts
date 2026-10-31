@@ -98,7 +98,7 @@ describe('between-hand card exchange', () => {
 
   it('completes a pending human return and then last place leads', () => {
     const state = createPlayingState({
-      mode: 'individual',
+      mode: '2v2',
       phase: 'exchanging',
       currentSeat: 0,
       pendingExchange: {
@@ -139,7 +139,7 @@ describe('between-hand card exchange', () => {
 
   it('runs after the next-hand deal, last leads after a swap, and keeps a 54-card unique deck', () => {
     const state = createPlayingState({
-      mode: 'individual',
+      mode: '2v2',
       phase: 'handComplete',
       finishOrder: [2, 0, 1],
       hands: [C('S3'), C('S4'), C('S5'), C('S6')],

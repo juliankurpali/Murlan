@@ -4,7 +4,7 @@ import { PersistedMatch } from '../src/application/types';
 
 describe('match persistence payload', () => {
   it('round-trips GameState JSON with schemaVersion and rules', () => {
-    const state = startMatch('2v2', createSeededRandom(44));
+    const state = startMatch(createSeededRandom(44));
     const payload: PersistedMatch = {
       schemaVersion: 1,
       state,

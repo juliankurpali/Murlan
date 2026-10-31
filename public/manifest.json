@@ -1,7 +1,7 @@
 {
-  "name": "Murlan",
-  "short_name": "Murlan",
-  "description": "Albanian Murlan card game. Play 2 vs 2 with friends.",
+  "name": "Murlan Table",
+  "short_name": "Murlan Table",
+  "description": "Independent web table for the traditional Albanian card game. Not affiliated with other Murlan apps.",
   "start_url": ".",
   "scope": ".",
   "display": "fullscreen",

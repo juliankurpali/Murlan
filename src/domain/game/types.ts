@@ -3,7 +3,7 @@ import { RulesConfig } from '../rules/types';
 
 export type SeatId = 0 | 1 | 2 | 3;
 
-export type MatchMode = '2v2' | 'individual';
+export type MatchMode = '2v2';
 
 export type GamePhase = 'playing' | 'exchanging' | 'handComplete' | 'matchComplete';
 
@@ -109,7 +109,7 @@ export type PublicMatchView = {
   currentSeat: SeatId;
   trick: TrickState;
   scores: [number, number, number, number];
-  teamScores: { team0: number; team1: number } | null;
+  teamScores: { team0: number; team1: number };
   finishOrder: SeatId[];
   phase: GamePhase;
   targetScore: number;

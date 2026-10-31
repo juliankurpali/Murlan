@@ -17,6 +17,8 @@ type Props = {
   onChange: (settings: Partial<AppSettings>) => void;
   onRename?: (username: string) => void;
   onBack: () => void;
+  onTerms?: () => void;
+  onPrivacy?: () => void;
 };
 
 export function SettingsScreen({
@@ -25,6 +27,8 @@ export function SettingsScreen({
   onChange,
   onRename,
   onBack,
+  onTerms,
+  onPrivacy,
 }: Props) {
   const language = settings.language;
   const [username, setUsername] = useState(player?.username ?? '');
@@ -58,7 +62,14 @@ export function SettingsScreen({
   };
 
   return (
-    <LandscapeFrame title={t(language, 'settings')} backLabel={t(language, 'back')} onBack={onBack}>
+    <LandscapeFrame
+      title={t(language, 'settings')}
+      backLabel={t(language, 'back')}
+      onBack={onBack}
+      action={
+        onTerms ? <UiButton label={t(language, 'termsTitle')} variant="ghost" onPress={onTerms} /> : undefined
+      }
+    >
       <LandscapePane>
         <ScrollView contentContainerStyle={styles.pane} showsVerticalScrollIndicator={false}>
           <Text style={styles.label}>{t(language, 'profile')}</Text>
@@ -139,7 +150,9 @@ export function SettingsScreen({
             onValueChange={(showLegalMoves) => onChange({ showLegalMoves })}
           />
           <Text style={styles.label}>{t(language, 'voiceMode')}</Text>
-          <Text style={styles.hint}>{t(language, 'voiceModeHint')}</Text>
+          <Text style={styles.hint} numberOfLines={2}>
+            {t(language, 'voiceModeHint')}
+          </Text>
           <View style={styles.row}>
             {(['natural', 'clear'] as VoiceMode[]).map((mode) => (
               <Pressable
@@ -185,8 +198,8 @@ function SwitchRow({
 
 const styles = StyleSheet.create({
   pane: {
-    gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    gap: spacing.xs,
+    paddingBottom: spacing.xs,
     flexGrow: 1,
     justifyContent: 'center',
   },

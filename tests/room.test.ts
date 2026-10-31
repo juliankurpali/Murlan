@@ -24,6 +24,11 @@ describe('online rooms', () => {
     expect(roomIsReady(filled)).toBe(true);
     expect(guestsAreReady(filled)).toBe(true);
     expect(filled.seats.filter((seat) => seat.isBot)).toHaveLength(3);
+    expect(filled.seats.filter((seat) => seat.isBot).map((seat) => seat.name)).toEqual([
+      'Leka (AI)',
+      'Drita (AI)',
+      'Gjergj (AI)',
+    ]);
   });
 
   it('waits for invited players to ready up', () => {

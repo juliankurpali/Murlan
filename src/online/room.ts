@@ -1,4 +1,5 @@
 import { MatchMode } from '../domain';
+import { withAiLabel } from '../platform/ids';
 import { ConnectionState } from './lifecycle';
 
 export const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -124,7 +125,7 @@ export function fillBots(room: GameRoom, names: string[]): GameRoom {
     if (seat.ready) {
       return seat;
     }
-    const name = names[bot] ?? `Bot ${bot + 1}`;
+    const name = withAiLabel(names[bot] ?? `Bot ${bot + 1}`);
     bot += 1;
     return occupant(name, { isBot: true, muted: true, voiceAvailable: false });
   });

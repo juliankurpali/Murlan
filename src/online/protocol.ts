@@ -72,7 +72,7 @@ export type ServerMessage =
   | { t: 'voice'; seat: SeatId; pcm: string; rate?: number }
   | { t: 'chat'; id: string; seat: SeatId; name: string; text: string; at: number }
   | { t: 'chatHistory'; messages: ChatMessage[] }
-  | { t: 'ended'; gameId: string }
+  | { t: 'ended'; gameId: string; reason?: 'admin' | 'empty'; code?: string }
   | { t: 'error'; message: string };
 
 function emptySeatView(): RoomSeat {

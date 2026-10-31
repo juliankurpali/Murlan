@@ -26,7 +26,6 @@ export function ProfileScreen({ language, player, history, friends, onBack }: Pr
             <Stat label={t(language, 'gamesLost')} value={player?.losses ?? 0} />
             <Stat label={t(language, 'winPct')} value={`${player?.winPct ?? 0}%`} />
             <Stat label={t(language, 'teamStats')} value={player?.teamWins ?? 0} />
-            <Stat label={t(language, 'individualStats')} value={player?.individualWins ?? 0} />
           </View>
         </View>
       </LandscapePane>

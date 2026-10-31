@@ -23,7 +23,7 @@ import { TrickPile } from '../components/TrickPile';
 import { UiButton } from '../components/UiButton';
 import { seatName, t } from '../i18n';
 import { LayoutGroup } from '../motion';
-import { colors, motion, spacing } from '../theme';
+import { colors, markGutter, motion, spacing } from '../theme';
 
 type Props = {
   language: Language;
@@ -36,6 +36,8 @@ type Props = {
   selectionLegal: boolean | null;
   humanTurn: boolean;
   turnProgress: number;
+  turnRemainingSec?: number;
+  turnDurationMs?: number;
   humanAppearance: SeatAppearance;
   localSeat?: SeatId;
   roomSeats?: RoomSeat[] | null;
@@ -47,8 +49,6 @@ type Props = {
   onPass: () => void;
   onMenu: () => void;
   onSettings: () => void;
-  fullscreenLabel?: string | null;
-  onFullscreen?: () => void;
 };
 
 function playSignature(view: PublicMatchView): { key: string; seat: SeatId; cards: Card[] } | null {
@@ -75,6 +75,8 @@ export function TableScreen({
   selectionLegal,
   humanTurn,
   turnProgress,
+  turnRemainingSec = 0,
+  turnDurationMs,
   humanAppearance,
   localSeat = 0,
   roomSeats = null,
@@ -86,8 +88,6 @@ export function TableScreen({
   onPass,
   onMenu,
   onSettings,
-  fullscreenLabel,
-  onFullscreen,
 }: Props) {
   const { width, height } = useStageDimensions();
   const insets = useSafeAreaInsets();
@@ -100,6 +100,12 @@ export function TableScreen({
   const rimX = Math.max(padL, padR);
   const rimY = Math.max(padT, padB);
   const lastPlayedSeat = lastPlayedSeatFromHistory(view.history);
+  const lastPlayedName =
+    lastPlayedSeat === null
+      ? null
+      : lastPlayedSeat === localSeat
+        ? t(language, 'you')
+        : roomSeats?.[lastPlayedSeat]?.name || seatName(language, lastPlayedSeat);
   const play = useMemo(() => playSignature(view), [view]);
   const lastEvent = view.history[view.history.length - 1];
   const passBurst =
@@ -115,7 +121,6 @@ export function TableScreen({
   const handLeft = rimX + handInset;
   const handRight = rimX + handInset;
   const handFit = fitHandCards(view.ownHand.length, tableWidth - handLeft - handRight, cardMax);
-  const [hintOn, setHintOn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatSeen, setChatSeen] = useState(0);
@@ -183,10 +188,6 @@ export function TableScreen({
   }, [play?.key, play?.cards.length]);
 
   useEffect(() => {
-    setHintOn(false);
-  }, [view.history.length, view.currentSeat]);
-
-  useEffect(() => {
     if (chatOpen) {
       setChatSeen(chat.length);
     }
@@ -223,16 +224,12 @@ export function TableScreen({
   const flying = !sharedLayout && Boolean(play && play.key !== landedKey);
   const revealed = !flying;
   const youTeam = localSeat % 2;
-  const youScore = view.teamScores
-    ? youTeam === 0
-      ? view.teamScores.team0
-      : view.teamScores.team1
-    : view.scores[localSeat];
-  const themScore = view.teamScores
-    ? youTeam === 0
-      ? view.teamScores.team1
-      : view.teamScores.team0
-    : Math.max(...view.scores.filter((_, index) => index !== localSeat));
+  const youScore = view.teamScores.team0;
+  const themScore = view.teamScores.team1;
+  const team1Label =
+    youTeam === 0 ? `${t(language, 'team1')} · ${t(language, 'you')}` : t(language, 'team1');
+  const team2Label =
+    youTeam === 1 ? `${t(language, 'team2')} · ${t(language, 'you')}` : t(language, 'team2');
 
   const onTableLayout = (event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout;
@@ -262,12 +259,15 @@ export function TableScreen({
         lastPlayed={lastPlayedSeat === seat}
         place={place}
         placeLabel={place ? t(language, placeKeys[place - 1] ?? 'fourth') : null}
-        partner={view.mode === '2v2' && seat % 2 === localSeat % 2}
+        partner={seat % 2 === localSeat % 2}
         side={side}
         turnProgress={view.currentSeat === seat ? turnProgress : 0}
+        remainingSec={view.currentSeat === seat ? turnRemainingSec : 0}
+        turnDurationMs={turnDurationMs}
+        turnToken={`${view.handIndex}-${view.currentSeat}-${view.history.length}`}
         appearance={appearanceForSeat(seat, humanAppearance, localSeat)}
         dealing={dealing}
-        teamLabel={view.mode === '2v2' ? t(language, seat % 2 === 0 ? 'team1' : 'team2') : null}
+        teamLabel={t(language, seat % 2 === 0 ? 'team1' : 'team2')}
         spotlight={giveTarget === seat}
         dimmed={giveTarget !== null && giveTarget !== seat && seat !== localSeat}
         displayName={occupant ? (occupant.isYou ? t(language, 'you') : occupant.name) : undefined}
@@ -304,7 +304,7 @@ export function TableScreen({
           {
             paddingTop: padT,
             paddingLeft: padL,
-            paddingRight: padR,
+            paddingRight: padR + markGutter,
           },
         ]}
       >
@@ -329,18 +329,6 @@ export function TableScreen({
               >
                 <Text style={styles.menuItemText}>{t(language, 'settings')}</Text>
               </Pressable>
-              {onFullscreen && fullscreenLabel ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    setMenuOpen(false);
-                    onFullscreen();
-                  }}
-                  style={styles.menuItem}
-                >
-                  <Text style={styles.menuItemText}>{fullscreenLabel}</Text>
-                </Pressable>
-              ) : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -381,8 +369,8 @@ export function TableScreen({
             you={youScore}
             them={themScore}
             target={view.targetScore}
-            youLabel={view.mode === '2v2' ? t(language, 'teamYou') : t(language, 'you')}
-            themLabel={t(language, 'teamOpp')}
+            youLabel={team1Label}
+            themLabel={team2Label}
             targetLabel={t(language, 'target', { score: view.targetScore })}
           />
           <View style={styles.roundChip}>
@@ -411,16 +399,12 @@ export function TableScreen({
           <View style={[styles.west, { left: rimX }]}>{rack('west')}</View>
           <View style={[styles.east, { right: rimX }]}>{rack('east')}</View>
           <View style={styles.center} pointerEvents="box-none">
-            {humanTurn && !dealing && !exchanging ? (
-              <View style={styles.turnChip} pointerEvents="none">
-                <Text style={styles.turnChipText}>{t(language, 'yourTurn')}</Text>
-              </View>
-            ) : null}
             <TrickPile
               language={language}
               combination={!dealing && !exchanging && revealed ? view.trick.combination : null}
               revealed={!dealing && revealed}
               originSeat={lastPlayedSeat}
+              playedBy={lastPlayedName}
               compact={phone}
             />
           </View>
@@ -438,7 +422,7 @@ export function TableScreen({
             <HandStrip
               cards={view.ownHand}
               selectedIds={selectedIds}
-              legalIds={showLegalMoves || hintOn ? legalCardIds : undefined}
+              legalIds={showLegalMoves ? legalCardIds : undefined}
               selectionLegal={selectionLegal}
               language={language}
               disabled={dealing || !humanTurn}
@@ -475,13 +459,6 @@ export function TableScreen({
             style={[styles.passCol, { left: rimX, bottom: rimY }]}
             pointerEvents="box-none"
           >
-            <UiButton
-              label={t(language, 'hint')}
-              variant="ghost"
-              disabled={dealing || exchanging || !humanTurn || legalCardIds.size === 0}
-              onPress={() => setHintOn(true)}
-              style={styles.hintBtn}
-            />
             <UiButton
               label={t(language, 'pass')}
               variant="secondary"
@@ -747,11 +724,6 @@ const styles = StyleSheet.create({
     minHeight: 42,
     paddingHorizontal: 12,
   },
-  hintBtn: {
-    minHeight: 28,
-    minWidth: 96,
-    paddingHorizontal: 8,
-  },
   table: {
     flex: 1,
     overflow: 'visible',
@@ -784,28 +756,13 @@ const styles = StyleSheet.create({
   },
   center: {
     position: 'absolute',
-    left: '22%',
-    right: '22%',
-    top: '28%',
-    bottom: '28%',
+    left: '18%',
+    right: '18%',
+    top: '22%',
+    bottom: '22%',
     zIndex: 4,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  turnChip: {
-    position: 'absolute',
-    top: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
-    backgroundColor: 'rgba(8, 18, 16, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(232, 197, 71, 0.35)',
-  },
-  turnChipText: {
-    color: colors.goldHi,
-    fontSize: 11,
-    fontWeight: '700',
   },
   infoDot: {
     position: 'absolute',

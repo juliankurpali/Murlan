@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hashIdentity, sameSecret } from '../src/platform/identity';
 import { applyUserIntent, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch } from '../src/platform/match';
-import { isUsername, suggestUsername } from '../src/platform/ids';
+import { isGeneratedUsername, isUsername, suggestUsername } from '../src/platform/ids';
 import { PlatformStore } from '../src/platform/store';
 
 function tempStore(): PlatformStore {
@@ -39,11 +39,12 @@ describe('platform identity and matches', () => {
     const b = store.guest('bbbbbbbb');
     const from = store.auth(a.token)!;
     const guest = store.auth(b.token)!;
-    const game = store.createGame(from, '2v2');
+    const game = store.createGame(from);
     store.joinGame(guest, game.code);
     store.requestFriend(from, guest.username);
     const pending = store.pendingFor(guest.id);
     expect(pending).toHaveLength(1);
+    expect(store.inbox(guest.id).some((row) => row.kind === 'friend-request' && row.fromId === from.id)).toBe(true);
     store.respondFriend(guest, pending[0]!.id, true);
     expect(store.friendsOf(from.id).map((row) => row.id)).toContain(guest.id);
   });
@@ -59,7 +60,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hosthost').token)!;
     const guest = store.auth(store.guest('guestgst').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -79,7 +80,7 @@ describe('platform identity and matches', () => {
   it('rejects a play from a player who is not seated', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hosthost2').token)!;
-    const game = store.createGame(host, 'individual');
+    const game = store.createGame(host);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
     expect(() => applyUserIntent(game, 'missing', { kind: 'pass' })).toThrow('not-in-room');
@@ -87,16 +88,24 @@ describe('platform identity and matches', () => {
 
   it('suggests a stable username seed', () => {
     expect(suggestUsername('abc')).toBe(suggestUsername('abc'));
+    expect(isGeneratedUsername(suggestUsername('abc'))).toBe(true);
+    expect(isGeneratedUsername('SwiftEagle42')).toBe(true);
+    expect(isGeneratedUsername('Julian')).toBe(false);
+    expect(isGeneratedUsername('Player')).toBe(true);
   });
 
   it('lets any seated player pick an empty or bot seat in the lobby', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostseat1').token)!;
     const guest = store.auth(store.guest('guestseat').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code, { team: 0 });
     expect(game.seats[2]?.userId).toBe(guest.id);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    expect(game.seats.filter((seat) => seat.isBot).map((seat) => seat.botName)).toEqual([
+      'Leka (AI)',
+      'Drita (AI)',
+    ]);
     store.claimSeat(host, game, 1);
     expect(game.seats[1]?.userId).toBe(host.id);
     expect(game.seats[0]?.isBot).toBe(true);
@@ -111,7 +120,7 @@ describe('platform identity and matches', () => {
     const guest = store.auth(store.guest('guestswap1').token)!;
     const extra = store.auth(store.guest('extraswap1').token)!;
     const late = store.auth(store.guest('lateswap1').token)!;
-    const game = store.createGame(host, 'individual');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.joinGame(extra, game.code);
     store.joinGame(late, game.code);
@@ -130,7 +139,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostdeny1').token)!;
     const guest = store.auth(store.guest('guestdeny1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.claimSeat(guest, game, 0);
     expect(game.seats[0]?.userId).toBe(host.id);
@@ -144,7 +153,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostboth1').token)!;
     const guest = store.auth(store.guest('guestboth1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.claimSeat(guest, game, 0);
     const result = store.claimSeat(host, game, 1);
@@ -157,7 +166,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostinvt1').token)!;
     const friend = store.auth(store.guest('friendnv1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.invite(host, game, friend.username, 0);
     store.joinGame(friend, game.code);
     expect(game.seats[2]?.userId).toBe(friend.id);
@@ -167,7 +176,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostnext1').token)!;
     const guest = store.auth(store.guest('guestnxt1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -185,7 +194,7 @@ describe('platform identity and matches', () => {
   it('deals the next hand as soon as the only human is ready', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostsolo1').token)!;
-    const game = store.createGame(host, 'individual');
+    const game = store.createGame(host);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
     game.match = { ...game.match!, phase: 'handComplete', finishOrder: [0, 1, 2, 3] };
@@ -198,7 +207,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hoststay1').token)!;
     const guest = store.auth(store.guest('gueststay').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -211,7 +220,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostgone1').token)!;
     const guest = store.auth(store.guest('guestgone').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -226,7 +235,7 @@ describe('platform identity and matches', () => {
   it('ends the match when the last human leaves', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostleft1').token)!;
-    const game = store.createGame(host, 'individual');
+    const game = store.createGame(host);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
     parkPlayer(game, host.id, true);
@@ -237,7 +246,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostalllv').token)!;
     const guest = store.auth(store.guest('guestalllv').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -258,7 +267,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostmenu1').token)!;
     const guest = store.auth(store.guest('guestmenu').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -274,7 +283,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostback1').token)!;
     const guest = store.auth(store.guest('guestback').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -308,7 +317,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostbotlv').token)!;
     const guest = store.auth(store.guest('guestbotlv').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -327,12 +336,12 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostnewrm').token)!;
     const guest = store.auth(store.guest('guestnewrm').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
     parkPlayer(game, host.id, true);
-    const next = store.createGame(host, 'individual');
+    const next = store.createGame(host);
     expect(next.id).not.toBe(game.id);
     expect(next.status).toBe('lobby');
     expect(game.seats[0]?.isBot).toBe(true);
@@ -344,7 +353,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostadmit1').token)!;
     const guest = store.auth(store.guest('guestadmit').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     const pending = store.requestJoin(guest, game.code);
     expect(pending.pending).toBe(true);
     expect(game.seats.some((seat) => seat.userId === guest.id)).toBe(false);
@@ -358,7 +367,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostinvok1').token)!;
     const friend = store.auth(store.guest('friendok1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.invite(host, game, friend.username, 1);
     const outcome = store.requestJoin(friend, game.code);
     expect(outcome.pending).toBe(false);
@@ -370,7 +379,7 @@ describe('platform identity and matches', () => {
     const host = store.auth(store.guest('hostnoroom').token)!;
     const guest = store.auth(store.guest('guestnoroom').token)!;
     const late = store.auth(store.guest('latenoroom').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     expect(store.requestJoin(guest, game.code).pending).toBe(true);
     store.respondJoin(host, game.id, guest.id, true);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
@@ -389,7 +398,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostclose1').token)!;
     const guest = store.auth(store.guest('guestclose1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.requestJoin(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
@@ -402,7 +411,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostready1').token)!;
     const guest = store.auth(store.guest('guestready1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.joinGame(guest, game.code);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     expect(() => store.assertCanStart(guest, game)).toThrow('not-host');
@@ -424,7 +433,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostread1').token)!;
     const guest = store.auth(store.guest('guestread1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.invite(host, game, guest.username);
     const notice = store.inbox(guest.id).find((item) => item.kind === 'invite')!;
     expect(notice.read).toBe(false);
@@ -442,7 +451,7 @@ describe('platform identity and matches', () => {
     expect(store.profile(owner.id, stranger.id)).toBeNull();
     const own = store.profile(owner.id, owner.id);
     expect(own?.player.id).toBe(owner.id);
-    const game = store.createGame(owner, '2v2');
+    const game = store.createGame(owner);
     store.joinGame(tablemate, game.code);
     const seen = store.profile(owner.id, tablemate.id);
     expect(seen?.player.id).toBe(owner.id);
@@ -463,7 +472,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostdeny1').token)!;
     const guest = store.auth(store.guest('guestdeny1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.requestJoin(guest, game.code);
     store.respondJoin(host, game.id, guest.id, false);
     expect(game.seats.some((seat) => seat.userId === guest.id)).toBe(false);
@@ -475,9 +484,9 @@ describe('platform identity and matches', () => {
     const host = store.auth(store.guest('hostadmin1').token)!;
     const other = store.auth(store.guest('otheradmin').token)!;
     const stranger = store.auth(store.guest('stranger99').token)!;
-    const live = store.createGame(host, '2v2');
+    const live = store.createGame(host);
     store.requestJoin(other, live.code);
-    const finished = store.createGame(other, 'individual');
+    const finished = store.createGame(other);
     finished.status = 'complete';
     const listed = store.adminGames();
     expect(listed.map((row) => row.id)).toEqual([live.id]);
@@ -495,7 +504,7 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostsnap01').token)!;
     const guest = store.auth(store.guest('guestsnap1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.requestJoin(guest, game.code);
     store.respondJoin(host, game.id, guest.id, true);
     store.setLobbyReady(guest, game, true);
@@ -514,18 +523,25 @@ describe('platform identity and matches', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hostend001').token)!;
     const guest = store.auth(store.guest('guestend01').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.requestJoin(guest, game.code);
     store.respondJoin(host, game.id, guest.id, true);
     store.setLobbyReady(guest, game, true);
     store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
     startMatch(game);
+    store.chat(game, host, 'keep this at the table');
+    expect(game.chat).toHaveLength(1);
     expect(forceEndGame(game)).toBe(true);
     expect(game.status).toBe('complete');
+    expect(game.chat).toEqual([]);
     expect(game.match?.winner).toBeNull();
     expect(store.adminSnapshot().games).toEqual([]);
     expect(host.wins + guest.wins).toBe(0);
     expect(forceEndGame(game)).toBe(false);
+    store.notifyAdminEnded(game);
+    expect(store.inbox(host.id).some((row) => row.kind === 'game-ended' && row.gameId === game.id)).toBe(true);
+    expect(store.inbox(guest.id).some((row) => row.kind === 'game-ended' && row.body.includes(game.code))).toBe(true);
+    expect(store.inbox(host.id).filter((row) => row.kind === 'game-ended')).toHaveLength(1);
   });
 
   it('only lists live tables a player already sat at', () => {
@@ -533,7 +549,7 @@ describe('platform identity and matches', () => {
     const host = store.auth(store.guest('hostseat01').token)!;
     const guest = store.auth(store.guest('guestseat1').token)!;
     const outsider = store.auth(store.guest('outsiders1').token)!;
-    const game = store.createGame(host, '2v2');
+    const game = store.createGame(host);
     store.requestJoin(guest, game.code);
     store.invite(host, game, outsider.username);
     expect(store.activeFor(host.id).map((row) => row.id)).toEqual([game.id]);

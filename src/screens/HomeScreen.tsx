@@ -1,47 +1,42 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Language } from '../application/types';
+import { BrandMark } from '../components/BrandMark';
 import { UiButton } from '../components/UiButton';
 import { t } from '../i18n';
-import { colors, fonts, spacing } from '../theme';
+import { colors, fonts, markGutter, spacing } from '../theme';
 
 type Props = {
   language: Language;
   canResume: boolean;
-  fullscreenLabel?: string | null;
   onOnline: () => void;
   onResume: () => void;
   onRules: () => void;
   onSettings: () => void;
-  onFullscreen?: () => void;
+  onTerms: () => void;
+  onPrivacy: () => void;
 };
-
-function Crown() {
-  return (
-    <View style={styles.crown}>
-      <View style={styles.crownBand} />
-      <View style={[styles.crownPeak, styles.crownPeakL]} />
-      <View style={[styles.crownPeak, styles.crownPeakC]} />
-      <View style={[styles.crownPeak, styles.crownPeakR]} />
-    </View>
-  );
-}
 
 export function HomeScreen({
   language,
   canResume,
-  fullscreenLabel,
   onOnline,
   onResume,
   onRules,
   onSettings,
-  onFullscreen,
+  onTerms,
+  onPrivacy,
 }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.brand}>
-        <Crown />
+        <BrandMark size={42} />
         <Text style={styles.title}>{t(language, 'appName')}</Text>
-        <Text style={styles.tag}>{t(language, 'tagline')}</Text>
+        <Text style={styles.tag} numberOfLines={2}>
+          {t(language, 'tagline')}
+        </Text>
+        <Text style={styles.note} numberOfLines={2}>
+          {t(language, 'freePlayNote')} {t(language, 'independentNote')}
+        </Text>
       </View>
       <View style={styles.actions}>
         <UiButton label={t(language, 'playOnline')} onPress={onOnline} />
@@ -52,9 +47,8 @@ export function HomeScreen({
           <UiButton label={t(language, 'rules')} variant="ghost" onPress={onRules} style={styles.half} />
           <UiButton label={t(language, 'settings')} variant="ghost" onPress={onSettings} style={styles.half} />
         </View>
-        {onFullscreen && fullscreenLabel ? (
-          <UiButton label={fullscreenLabel} variant="ghost" onPress={onFullscreen} />
-        ) : null}
+        <UiButton label={t(language, 'termsTitle')} variant="ghost" onPress={onTerms} />
+        <UiButton label={t(language, 'privacyTitle')} variant="ghost" onPress={onPrivacy} />
       </View>
     </View>
   );
@@ -66,66 +60,44 @@ const styles = StyleSheet.create({
     backgroundColor: colors.room,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.md + markGutter,
+    paddingVertical: spacing.md,
     gap: spacing.lg,
+    minHeight: 0,
   },
   brand: {
-    flex: 1,
+    flex: 1.15,
     alignItems: 'flex-start',
     justifyContent: 'center',
     minWidth: 0,
+    gap: 6,
   },
-  crown: {
-    width: 42,
-    height: 28,
-    marginBottom: 8,
-  },
-  crownBand: {
-    position: 'absolute',
-    left: 4,
-    right: 4,
-    bottom: 2,
-    height: 8,
-    borderRadius: 2,
-    backgroundColor: colors.gold,
-  },
-  crownPeak: {
-    position: 'absolute',
-    bottom: 8,
-    width: 10,
-    height: 16,
-    backgroundColor: colors.gold,
-  },
-  crownPeakL: {
-    left: 4,
-    transform: [{ rotate: '-18deg' }],
-  },
-  crownPeakC: {
-    left: 16,
-    height: 20,
-  },
-  crownPeakR: {
-    right: 4,
-    transform: [{ rotate: '18deg' }],
+  note: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+    maxWidth: 420,
   },
   title: {
     color: colors.gold,
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: '800',
-    letterSpacing: 10,
+    letterSpacing: 8,
     textTransform: 'uppercase',
     fontFamily: fonts.sans,
   },
   tag: {
     color: colors.muted,
-    marginTop: 8,
+    marginTop: 4,
     fontSize: 13,
-    letterSpacing: 1.6,
+    letterSpacing: 1.2,
   },
   actions: {
-    width: 280,
-    maxWidth: '46%',
+    flex: 1,
+    minWidth: 200,
+    maxWidth: 300,
     gap: spacing.sm,
   },
   row: {

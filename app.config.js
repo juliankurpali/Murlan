@@ -4,9 +4,9 @@ module.exports = ({ config }) => ({
   ...config,
   web: {
     ...config.web,
-    name: 'Murlan',
-    shortName: 'Murlan',
-    description: 'Albanian Murlan card game. Play 2 vs 2 with friends.',
+    name: 'Murlan Table',
+    shortName: 'Murlan Table',
+    description: 'Independent web table for the traditional Albanian card game. Not affiliated with other Murlan apps.',
     themeColor: '#071016',
     backgroundColor: '#071016',
     orientation: 'landscape',

@@ -8,6 +8,7 @@ import { PublicPlayer } from '../platform/types';
 import { ChatPanel } from '../components/ChatPanel';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
+import { VoiceMic, voiceMicLabel } from '../components/VoiceMic';
 import { t, tError } from '../i18n';
 import { colors, fonts, radius, spacing } from '../theme';
 
@@ -31,6 +32,7 @@ type Props = {
   onShare?: () => void;
   onRespondJoin?: (fromId: string, accept: boolean) => void;
   onReady?: (ready: boolean) => void;
+  onToggleMute?: () => void;
 };
 
 function statusText(language: Language, status: NetStatus, error: string | null): string {
@@ -78,6 +80,7 @@ export function LobbyScreen({
   onShare,
   onRespondJoin,
   onReady,
+  onToggleMute,
 }: Props) {
   const [code, setCode] = useState('');
 
@@ -134,6 +137,13 @@ export function LobbyScreen({
               variant={you?.lobbyReady ? 'secondary' : 'primary'}
               onPress={() => onReady?.(!Boolean(you?.lobbyReady))}
             />
+            {onToggleMute && you?.ready && !you.isBot ? (
+              <UiButton
+                label={you.muted ? t(language, 'voiceOff') : t(language, 'voiceOn')}
+                variant={you.muted ? 'secondary' : 'go'}
+                onPress={onToggleMute}
+              />
+            ) : null}
             {you?.lobbyReady ? <Text style={styles.body}>{t(language, 'waitingHost')}</Text> : null}
           </ScrollView>
         </LandscapePane>
@@ -145,6 +155,7 @@ export function LobbyScreen({
               friends={friends}
               onClaimSeat={onClaimSeat}
               onAddFriend={onAddFriend}
+              onToggleMute={onToggleMute}
             />
           </View>
         </LandscapePane>
@@ -186,6 +197,13 @@ export function LobbyScreen({
             <Text style={styles.body}>{t(language, 'waitingToReady', { names: waiting.join(', ') })}</Text>
           ) : null}
           <View style={styles.roomActions}>
+            {onToggleMute && you?.ready && !you.isBot ? (
+              <UiButton
+                label={you.muted ? t(language, 'voiceOff') : t(language, 'voiceOn')}
+                variant={you.muted ? 'secondary' : 'go'}
+                onPress={onToggleMute}
+              />
+            ) : null}
             <UiButton label={t(language, 'fillBots')} variant="secondary" onPress={onFillBots} />
             <UiButton
               label={t(language, 'start')}
@@ -214,29 +232,18 @@ export function LobbyScreen({
                     <Text style={styles.inviteName} numberOfLines={1}>
                       {friend.username}
                     </Text>
-                    {room.mode === '2v2' ? (
-                      <>
-                        <UiButton
-                          label={t(language, 'inviteTeam')}
-                          variant="ghost"
-                          onPress={() => onInvite(friend.username, myTeam)}
-                          style={styles.inviteBtn}
-                        />
-                        <UiButton
-                          label={t(language, 'inviteOpp')}
-                          variant="ghost"
-                          onPress={() => onInvite(friend.username, oppTeam)}
-                          style={styles.inviteBtn}
-                        />
-                      </>
-                    ) : (
-                      <UiButton
-                        label={t(language, 'inviteFriend')}
-                        variant="ghost"
-                        onPress={() => onInvite(friend.username)}
-                        style={styles.inviteBtn}
-                      />
-                    )}
+                    <UiButton
+                      label={t(language, 'inviteTeam')}
+                      variant="ghost"
+                      onPress={() => onInvite(friend.username, myTeam)}
+                      style={styles.inviteBtn}
+                    />
+                    <UiButton
+                      label={t(language, 'inviteOpp')}
+                      variant="ghost"
+                      onPress={() => onInvite(friend.username, oppTeam)}
+                      style={styles.inviteBtn}
+                    />
                   </View>
                 );
               })}
@@ -252,6 +259,7 @@ export function LobbyScreen({
             friends={friends}
             onClaimSeat={onClaimSeat}
             onAddFriend={onAddFriend}
+            onToggleMute={onToggleMute}
           />
           <ChatPanel
             language={language}
@@ -272,49 +280,35 @@ function RoomSeats({
   friends,
   onClaimSeat,
   onAddFriend,
+  onToggleMute,
 }: {
   language: Language;
   room: GameRoom;
   friends: PublicPlayer[];
   onClaimSeat?: (seat: number) => void;
   onAddFriend?: (username: string) => void;
+  onToggleMute?: () => void;
 }) {
-  if (room.mode === '2v2') {
-    return (
-      <View style={styles.teams}>
-        <TeamColumn
-          language={language}
-          room={room}
-          team={0}
-          friends={friends}
-          onClaimSeat={onClaimSeat}
-          onAddFriend={onAddFriend}
-        />
-        <TeamColumn
-          language={language}
-          room={room}
-          team={1}
-          friends={friends}
-          onClaimSeat={onClaimSeat}
-          onAddFriend={onAddFriend}
-        />
-      </View>
-    );
-  }
   return (
-    <View style={styles.seats}>
-      {room.seats.map((seat, index) => (
-        <SeatCard
-          key={`${seat.name}-${index}`}
-          language={language}
-          seat={seat}
-          index={index}
-          started={room.started}
-          friends={friends}
-          onClaimSeat={onClaimSeat}
-          onAddFriend={onAddFriend}
-        />
-      ))}
+    <View style={styles.teams}>
+      <TeamColumn
+        language={language}
+        room={room}
+        team={0}
+        friends={friends}
+        onClaimSeat={onClaimSeat}
+        onAddFriend={onAddFriend}
+        onToggleMute={onToggleMute}
+      />
+      <TeamColumn
+        language={language}
+        room={room}
+        team={1}
+        friends={friends}
+        onClaimSeat={onClaimSeat}
+        onAddFriend={onAddFriend}
+        onToggleMute={onToggleMute}
+      />
     </View>
   );
 }
@@ -348,6 +342,7 @@ function TeamColumn({
   friends,
   onClaimSeat,
   onAddFriend,
+  onToggleMute,
 }: {
   language: Language;
   room: GameRoom;
@@ -355,6 +350,7 @@ function TeamColumn({
   friends: PublicPlayer[];
   onClaimSeat?: (seat: number) => void;
   onAddFriend?: (username: string) => void;
+  onToggleMute?: () => void;
 }) {
   const youTeam = (localSeatOf(room) % 2) as 0 | 1;
   const indexes = team === 0 ? [0, 2] : [1, 3];
@@ -376,6 +372,7 @@ function TeamColumn({
           partner={!room.seats[index]?.isYou && localSeatOf(room) % 2 === index % 2}
           onClaimSeat={onClaimSeat}
           onAddFriend={onAddFriend}
+          onToggleMute={onToggleMute}
         />
       ))}
     </View>
@@ -392,6 +389,7 @@ function SeatCard({
   friends = [],
   onClaimSeat,
   onAddFriend,
+  onToggleMute,
 }: {
   language: Language;
   seat: RoomSeat;
@@ -402,6 +400,7 @@ function SeatCard({
   friends?: PublicPlayer[];
   onClaimSeat?: (seat: number) => void;
   onAddFriend?: (username: string) => void;
+  onToggleMute?: () => void;
 }) {
   const vacant = !seat.ready || seat.isBot;
   const occupiedHuman = Boolean(onClaimSeat) && !started && seat.ready && !seat.isBot && !seat.isYou;
@@ -412,11 +411,17 @@ function SeatCard({
     !seat.isBot &&
     !seat.isYou &&
     !friends.some((friend) => friend.username === seat.name);
+  const voice = seat.ready
+    ? {
+        muted: seat.muted,
+        speaking: seat.speaking,
+        available: seat.voiceAvailable !== false,
+        canControl: Boolean(onToggleMute && seat.isYou && !seat.isBot),
+        onToggle: onToggleMute,
+      }
+    : null;
   return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={!open}
-      onPress={() => onClaimSeat?.(index)}
+    <View
       style={[
         styles.seat,
         stacked && styles.seatStacked,
@@ -426,13 +431,32 @@ function SeatCard({
         occupiedHuman && styles.seatSwitch,
       ]}
     >
-      <Text style={styles.seatName} numberOfLines={1}>
-        {seat.isYou ? t(language, 'you') : seat.ready ? seat.name : t(language, 'emptySeat')}
-      </Text>
-      <Text style={styles.seatMeta}>
-        {partner && seat.ready && !seat.isYou ? `${t(language, 'partnerSeat')} · ` : ''}
-        {seatStatus(language, seat, occupiedHuman)}
-      </Text>
+      <View style={styles.seatRow}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={!open}
+          onPress={() => onClaimSeat?.(index)}
+          style={styles.seatHit}
+        >
+          <Text style={styles.seatName} numberOfLines={1}>
+            {seat.isYou ? t(language, 'you') : seat.ready ? seat.name : t(language, 'emptySeat')}
+          </Text>
+          <Text style={styles.seatMeta}>
+            {partner && seat.ready && !seat.isYou ? `${t(language, 'partnerSeat')} · ` : ''}
+            {seat.speaking && !seat.muted ? t(language, 'voiceLive') : seatStatus(language, seat, occupiedHuman)}
+          </Text>
+        </Pressable>
+        {voice ? (
+          <VoiceMic
+            muted={voice.muted}
+            speaking={voice.speaking}
+            available={voice.available}
+            canControl={voice.canControl}
+            onToggle={voice.onToggle}
+            accessibilityLabel={voiceMicLabel(language, voice)}
+          />
+        ) : null}
+      </View>
       {canAdd ? (
         <UiButton
           label={t(language, 'sendRequest')}
@@ -440,7 +464,7 @@ function SeatCard({
           onPress={() => onAddFriend?.(seat.name)}
         />
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -497,12 +521,6 @@ const styles = StyleSheet.create({
     minHeight: 0,
     gap: spacing.sm,
   },
-  seats: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    alignContent: 'center',
-  },
   teams: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -540,6 +558,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     gap: 4,
+  },
+  seatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  seatHit: {
+    flexGrow: 1,
+    minWidth: 0,
   },
   seatStacked: {
     width: '100%',

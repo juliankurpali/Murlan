@@ -155,7 +155,7 @@ function GameCard({
   const filled = game.seats.filter((seat) => !seat.empty).length;
   const onTable = trickLabel(language, game.trick);
   const bits = [
-    game.mode === '2v2' ? t(language, 'mode2v2') : t(language, 'modeIndividual'),
+    t(language, 'mode2v2'),
     t(language, 'adminSeats', { filled }),
     game.handIndex ? t(language, 'adminHand', { n: game.handIndex }) : null,
     game.currentName ? t(language, 'adminTurn', { name: game.currentName }) : null,

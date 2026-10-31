@@ -3,7 +3,6 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { Language } from '../application/types';
 import { LandscapeFrame } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
-import { MatchMode } from '../domain';
 import { Friendship, GameSummary, PlatformNotice, PublicPlayer } from '../platform/types';
 import { isRoomCode } from '../online/room';
 import { NetStatus } from '../online/net';
@@ -22,7 +21,7 @@ type Props = {
   waitingJoin?: string | null;
   onBack: () => void;
   onProfile: () => void;
-  onCreate: (mode: MatchMode) => void;
+  onCreate: () => void;
   onJoin: (code: string) => void;
   onOpenGame: (game: GameSummary) => void;
   onRespond: (id: string, accept: boolean) => void;
@@ -81,7 +80,6 @@ export function SocialHubScreen({
   onFriendMidGame,
 }: Props) {
   const [code, setCode] = useState('');
-  const [mode, setMode] = useState<MatchMode>('2v2');
   const [friendsOpen, setFriendsOpen] = useState(false);
   const notice = statusLine(language, status, error);
   const unread = inbox.filter((item) => !item.read).slice(0, 3);
@@ -129,21 +127,7 @@ export function SocialHubScreen({
                 {t(language, 'playingAs', { name: me?.username ?? t(language, 'guestAccount') })}
               </Text>
             </Pressable>
-            <Text style={styles.label}>{t(language, 'mode')}</Text>
-            <View style={styles.row}>
-              <Pressable onPress={() => setMode('2v2')} style={[styles.choice, mode === '2v2' && styles.choiceOn]}>
-                <Text style={[styles.choiceLabel, mode === '2v2' && styles.choiceLabelOn]}>{t(language, 'mode2v2')}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setMode('individual')}
-                style={[styles.choice, mode === 'individual' && styles.choiceOn]}
-              >
-                <Text style={[styles.choiceLabel, mode === 'individual' && styles.choiceLabelOn]}>
-                  {t(language, 'modeIndividual')}
-                </Text>
-              </Pressable>
-            </View>
-            <UiButton label={t(language, 'createRoom')} onPress={() => onCreate(mode)} />
+            <UiButton label={t(language, 'createRoom')} onPress={onCreate} />
           </View>
           <View style={styles.col}>
             <Text style={styles.label}>{t(language, 'joinRoom')}</Text>
@@ -166,7 +150,7 @@ export function SocialHubScreen({
                   {games.map((game) => (
                     <Pressable key={game.id} onPress={() => onOpenGame(game)} style={styles.card}>
                       <Text style={styles.cardTitle}>
-                        {game.code} · {game.mode === '2v2' ? t(language, 'mode2v2') : t(language, 'modeIndividual')}
+                        {game.code} · {t(language, 'mode2v2')}
                       </Text>
                       <Text style={styles.meta}>
                         {game.status === 'playing' ? t(language, 'resumeTable') : t(language, 'seatsOpen')}
@@ -252,6 +236,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
+    justifyContent: 'center',
     gap: spacing.sm,
   },
   notice: {
@@ -262,13 +247,21 @@ const styles = StyleSheet.create({
   cols: {
     flex: 1,
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: spacing.md,
     minHeight: 0,
   },
   col: {
     flex: 1,
     minWidth: 0,
+    minHeight: 0,
+    justifyContent: 'center',
     gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(12, 22, 28, 0.55)',
   },
   me: {
     borderWidth: 1,
@@ -293,31 +286,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     fontFamily: fonts.sans,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  choice: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.feltLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  choiceOn: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  choiceLabel: {
-    color: colors.cream,
-    fontWeight: '700',
-  },
-  choiceLabelOn: {
-    color: colors.ink,
   },
   input: {
     minHeight: 44,
@@ -352,6 +320,7 @@ const styles = StyleSheet.create({
   friendsBtn: {
     width: 40,
     height: 40,
+    flexShrink: 0,
     borderRadius: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderColor: 'rgba(255, 255, 255, 0.15)',

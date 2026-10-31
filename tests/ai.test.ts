@@ -61,7 +61,7 @@ describe('bot heuristic', () => {
   });
 
   it('never produces an illegal action in a full four-bot hand', () => {
-    let state = createGame({ mode: 'individual', random: createSeededRandom(99) });
+    let state = createGame({ random: createSeededRandom(99) });
     let guard = 0;
     while (state.phase === 'playing' && guard < 500) {
       guard += 1;

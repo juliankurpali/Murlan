@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { UiButton } from './UiButton';
-import { colors, fonts, spacing } from '../theme';
+import { colors, fonts, markGutter, spacing } from '../theme';
 
 type Props = {
   title: string;
@@ -38,7 +38,8 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
     backgroundColor: colors.room,
-    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.md + markGutter,
     paddingVertical: spacing.sm,
     minHeight: 0,
   },
@@ -51,7 +52,7 @@ const styles = StyleSheet.create({
   },
   side: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 88,
     justifyContent: 'center',
   },
   sideRight: {
@@ -59,10 +60,11 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
+    maxWidth: '42%',
     color: colors.goldHi,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 2,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     textAlign: 'center',
     fontFamily: fonts.sans,

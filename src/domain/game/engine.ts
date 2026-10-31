@@ -10,7 +10,7 @@ import { dealCards, dealerForHand } from './deal';
 import { applyCardExchange, defaultReturnCard, finishCardExchange, lastPlaceSeat } from './exchange';
 import { ruleError } from './errors';
 import { getLegalMoves } from './legalMoves';
-import { scoreHand } from './scoring';
+import { lockedMatchWinner, remainingFinishOrder, scoreHand } from './scoring';
 import { nextSeat, nextUnfinishedSeat, unfinishedSeats } from './seats';
 import {
   GameState,
@@ -23,7 +23,7 @@ import {
 } from './types';
 
 export type CreateGameInput = {
-  mode: MatchMode;
+  mode?: MatchMode;
   rules?: Partial<RulesConfig>;
   random: RandomSource;
 };
@@ -115,7 +115,7 @@ export function createGame(input: CreateGameInput): GameState {
   const dealt = dealNewHand(0, rules, input.random, [], false);
   return {
     schemaVersion: 1,
-    mode: input.mode,
+    mode: '2v2',
     rules,
     handIndex: 0,
     dealerSeat: dealt.dealerSeat,
@@ -172,10 +172,11 @@ export function legalMovesForSeat(state: GameState, seat: SeatId): Card[][] {
 }
 
 function completeHandIfNeeded(state: GameState): GameState {
-  if (state.finishOrder.length < 3) {
+  const locked = lockedMatchWinner(state);
+  if (state.finishOrder.length < 3 && locked === null) {
     return state;
   }
-  const finishOrder = [...state.finishOrder, ...unfinishedSeats(state.finishOrder)];
+  const finishOrder = [...state.finishOrder, ...remainingFinishOrder(state)];
   const scored = scoreHand({ ...state, finishOrder }, state.rules);
   return {
     ...state,

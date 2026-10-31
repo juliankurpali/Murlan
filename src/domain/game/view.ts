@@ -31,7 +31,7 @@ export function toPublicView(state: GameState, viewerSeat: SeatId): PublicMatchV
       passedSinceLastPlay: [...state.trick.passedSinceLastPlay],
     },
     scores: [...state.scores],
-    teamScores: state.mode === '2v2' ? teamScores(state.scores) : null,
+    teamScores: teamScores(state.scores),
     finishOrder: [...state.finishOrder],
     phase: state.phase,
     targetScore: state.targetScore,

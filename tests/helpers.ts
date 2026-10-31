@@ -33,7 +33,7 @@ export function createPlayingState(
   const currentSeat = overrides.currentSeat ?? 0;
   return {
     schemaVersion: 1,
-    mode: 'individual',
+    mode: '2v2',
     rules:
       overrides.rules ?? {
         ...DEFAULT_RULES,

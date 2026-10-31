@@ -6,3 +6,5 @@ export const TABLE_SESSION_STORAGE = 'murlan.tableSession.v2';
 export const AUTH_STORAGE = 'murlan.auth.v2';
 export const AUTH_STORAGE_LEGACY = 'murlan.auth.v1';
 export const PHOTO_KEY_STORAGE = 'murlan.photoKey.v1';
+export const USERNAME_PROMPT_STORAGE = 'murlan.usernamePrompt.v1';
+export const LEGAL_ACCEPT_STORAGE = 'murlan.legalAccept.v1';

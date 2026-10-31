@@ -69,3 +69,20 @@ export function normalizeUsername(value: string): string {
 export function isUsername(value: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_]{2,15}$/.test(value);
 }
+
+const GENERATED_USERNAME = new RegExp(
+  `^(${ADJ.join('|')})(${NOUN.join('|')})\\d+$`,
+);
+
+export function isGeneratedUsername(name: string): boolean {
+  return GENERATED_USERNAME.test(name) || /^Player\d*$/i.test(name);
+}
+
+export function baseBotName(name: string): string {
+  return name.replace(/\s*\(AI\)\s*$/i, '').trim();
+}
+
+export function withAiLabel(name: string): string {
+  const base = baseBotName(name) || 'Bot';
+  return `${base} (AI)`;
+}

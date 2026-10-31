@@ -1,4 +1,4 @@
-import { GameState, MatchMode } from '../domain';
+import { GameState } from '../domain';
 
 export type VoiceMode = 'natural' | 'clear';
 
@@ -44,6 +44,5 @@ export type SessionState = {
 };
 
 export type NewGameOptions = {
-  mode: MatchMode;
   language: Language;
 };

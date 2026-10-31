@@ -23,7 +23,7 @@ type Handlers = {
   onVoice?: (seat: SeatId, pcm: string, rate?: number) => void;
   onChat?: (message: ChatMessage) => void;
   onChatHistory?: (messages: ChatMessage[]) => void;
-  onEnded?: (gameId: string) => void;
+  onEnded?: (gameId: string, reason?: 'admin' | 'empty', code?: string) => void;
   onError?: (message: string) => void;
   onStatus?: (status: NetStatus) => void;
 };
@@ -128,7 +128,7 @@ function handle(message: ServerMessage) {
     return;
   }
   if (message.t === 'ended') {
-    handlers.onEnded?.(message.gameId);
+    handlers.onEnded?.(message.gameId, message.reason, message.code);
     return;
   }
   if (message.t === 'error') {
