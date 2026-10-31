@@ -1,11 +1,12 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { applyUserIntent, autoAct, connectedHumans, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
 import { sameSecret } from '../src/platform/identity';
 import { PlatformStore } from '../src/platform/store';
 import { PlatformGame, PlatformPlayer } from '../src/platform/types';
+import { decodeVoiceFrame, isVoiceFrame, stampVoiceSeat } from '../src/online/voiceFrame';
 import { openPostgres, Persistence } from './persist';
 
 const PORT = Number(process.env.PORT ?? process.env.MURLAN_RELAY_PORT ?? 8787);
@@ -30,6 +31,22 @@ function send(ws: WebSocket, payload: Json) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(payload));
   }
+}
+
+function sendBytes(ws: WebSocket, bytes: Uint8Array) {
+  if (ws.readyState === ws.OPEN && bytes.byteLength > 0) {
+    ws.send(bytes);
+  }
+}
+
+function asBuffer(raw: RawData): Buffer {
+  if (Buffer.isBuffer(raw)) {
+    return raw;
+  }
+  if (Array.isArray(raw)) {
+    return Buffer.concat(raw);
+  }
+  return Buffer.from(raw);
 }
 
 function body(req: IncomingMessage): Promise<Json> {
@@ -639,12 +656,18 @@ wss.on('connection', (ws, req) => {
   send(ws, { t: 'hello', id: 'ok' });
 
   ws.on('message', (raw) => {
-    if (raw.toString().length > 120_000) {
+    const buf = asBuffer(raw);
+    const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    if (isVoiceFrame(bytes)) {
+      relayVoice(ws, bytes);
+      return;
+    }
+    if (buf.length > 120_000) {
       return;
     }
     let message: Json;
     try {
-      message = JSON.parse(String(raw)) as Json;
+      message = JSON.parse(buf.toString('utf8')) as Json;
     } catch {
       return;
     }
@@ -686,11 +709,8 @@ wss.on('connection', (ws, req) => {
       send(ws, { t: 'error', message: 'auth' });
       return;
     }
-    if (message.t !== 'voice' && message.t !== 'ping' && !store.rateOk(`ws:${player.id}`, 80, 10_000)) {
+    if (message.t !== 'ping' && !store.rateOk(`ws:${player.id}`, 80, 10_000)) {
       send(ws, { t: 'error', message: 'rate-limit' });
-      return;
-    }
-    if (message.t === 'voice' && !store.rateOk(`voice:${player.id}`, 50, 1000)) {
       return;
     }
     if (message.t === 'ping') {
@@ -777,27 +797,37 @@ wss.on('connection', (ws, req) => {
       broadcastGame(game);
       return;
     }
-    if (message.t === 'voice' && game) {
-      const seat = game.seats.findIndex((row) => row.userId === player.id);
-      const occupant = seat >= 0 ? game.seats[seat] : null;
-      if (!occupant || occupant.muted) {
-        return;
-      }
-      const pcm = message.pcm;
-      const rate = Number(message.rate);
-      if (typeof pcm !== 'string' || pcm.length > 100_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(pcm)) {
-        return;
-      }
-      if (!Number.isFinite(rate) || rate < 8_000 || rate > 48_000) {
-        return;
-      }
-      for (const peer of gameSockets(game)) {
-        if (peer !== ws) {
-          send(peer, { t: 'voice', seat, pcm, rate });
-        }
+  });
+
+  function relayVoice(from: WebSocket, frame: Uint8Array) {
+    const meta = sockets.get(from);
+    const player = meta?.playerId ? store.players.get(meta.playerId) : null;
+    if (!meta || !player) {
+      return;
+    }
+    if (!store.rateOk(`voice:${player.id}`, 80, 1000)) {
+      return;
+    }
+    const parsed = decodeVoiceFrame(frame);
+    if (!parsed) {
+      return;
+    }
+    const game = meta.gameId ? store.games.get(meta.gameId) : null;
+    if (!game) {
+      return;
+    }
+    const seat = game.seats.findIndex((row) => row.userId === player.id);
+    const occupant = seat >= 0 ? game.seats[seat] : null;
+    if (!occupant || occupant.muted) {
+      return;
+    }
+    const stamped = stampVoiceSeat(frame, seat);
+    for (const peer of gameSockets(game)) {
+      if (peer !== from) {
+        sendBytes(peer, stamped);
       }
     }
-  });
+  }
 
   ws.on('error', () => undefined);
 

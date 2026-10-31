@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { CAPTURE_WORKLET_NAME, CAPTURE_WORKLET_SOURCE } from './captureWorklet';
 import type { VoiceSink } from './voiceJitter';
 
 type WebAudioWindow = Window & { webkitAudioContext?: typeof AudioContext };
@@ -33,7 +34,7 @@ export function installWebAudioUnlock() {
   window.addEventListener('keydown', unlock);
 }
 
-export type WebMicBuffer = { data: ArrayBuffer; sampleRate: number; channels: number };
+export type WebMicBuffer = { data: ArrayBuffer | Float32Array; sampleRate: number; channels: number };
 
 export type WebMic = {
   readonly isStreaming: boolean;
@@ -41,10 +42,31 @@ export type WebMic = {
   stop: () => void;
 };
 
+let workletReady: Promise<boolean> | null = null;
+
+async function loadCaptureWorklet(ctx: AudioContext): Promise<boolean> {
+  if (!ctx.audioWorklet) {
+    return false;
+  }
+  workletReady ??= (async () => {
+    const blob = new Blob([CAPTURE_WORKLET_SOURCE], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    try {
+      await ctx.audioWorklet.addModule(url);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  })();
+  return workletReady;
+}
+
 export function createWebMic(onBuffer: (buffer: WebMicBuffer) => void): WebMic {
   let media: MediaStream | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
-  let tap: ScriptProcessorNode | null = null;
+  let tap: AudioNode | null = null;
   let silent: GainNode | null = null;
   let streaming = false;
 
@@ -77,13 +99,29 @@ export function createWebMic(onBuffer: (buffer: WebMicBuffer) => void): WebMic {
         await ctx.resume().catch(() => undefined);
       }
       source = ctx.createMediaStreamSource(media);
-      tap = ctx.createScriptProcessor(4096, 1, 1);
       silent = ctx.createGain();
       silent.gain.value = 0;
-      tap.onaudioprocess = (event) => {
-        const copy = new Float32Array(event.inputBuffer.getChannelData(0));
-        onBuffer({ data: copy.buffer, sampleRate: ctx.sampleRate, channels: 1 });
-      };
+      const workletOk = await loadCaptureWorklet(ctx);
+      if (workletOk) {
+        const node = new AudioWorkletNode(ctx, CAPTURE_WORKLET_NAME, {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [1],
+          channelCount: 1,
+        });
+        node.port.onmessage = (event) => {
+          const samples = event.data as Float32Array;
+          onBuffer({ data: samples, sampleRate: ctx.sampleRate, channels: 1 });
+        };
+        tap = node;
+      } else {
+        const node = ctx.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = (event) => {
+          const copy = new Float32Array(event.inputBuffer.getChannelData(0));
+          onBuffer({ data: copy.buffer, sampleRate: ctx.sampleRate, channels: 1 });
+        };
+        tap = node;
+      }
       source.connect(tap);
       tap.connect(silent);
       silent.connect(ctx.destination);

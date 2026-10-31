@@ -3,7 +3,8 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import { AudioModule, useAudioStream } from 'expo-audio';
 import { pauseFeelPlayback, setVoiceLive } from './index';
 import { createWebMic, WebMicBuffer } from './webAudio';
-import { fadeEdges, firstChannel, floatToBase64Pcm, pcmRms, toFloat32 } from './pcm';
+import { fadeEdges, firstChannel, pcmRms, toFloat32 } from './pcm';
+import { createVoiceSender, ensureVoiceCodec } from './voiceCodec';
 import { remoteVoiceActive } from './voicePlay';
 import { createDecimator, createHighpass, createVoiceGate, createVoiceProcessor } from './voiceProcess';
 import { VOICE_SAMPLE_RATE, VoiceMode, voiceCaptureTune, voiceGateTune, voiceHighpassHz } from './voiceMode';
@@ -13,7 +14,7 @@ export type MicCaptureStatus = 'live' | 'muted' | 'denied' | 'unavailable' | 'in
 type Props = {
   enabled: boolean;
   mode: VoiceMode;
-  onFrame?: (pcm: string, sampleRate: number) => void;
+  onPacket?: (frame: Uint8Array) => void;
   onSpeaking?: (on: boolean) => void;
   onStatus?: (status: MicCaptureStatus) => void;
 };
@@ -52,19 +53,20 @@ function createCaptureChain(mode: VoiceMode, inRate: number) {
   };
 }
 
-export function VoiceChannel({ enabled, mode, onFrame, onSpeaking, onStatus }: Props) {
+export function VoiceChannel({ enabled, mode, onPacket, onSpeaking, onStatus }: Props) {
   const speaking = useRef(false);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
   const modeRef = useRef(mode);
   modeRef.current = mode;
-  const onFrameRef = useRef(onFrame);
-  onFrameRef.current = onFrame;
+  const onPacketRef = useRef(onPacket);
+  onPacketRef.current = onPacket;
   const onSpeakingRef = useRef(onSpeaking);
   onSpeakingRef.current = onSpeaking;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   const chain = useRef(createCaptureChain(mode, CAPTURE_RATE));
+  const sender = useRef(createVoiceSender());
   const onBuffer = (buffer: WebMicBuffer) => {
     if (!enabledRef.current) {
       return;
@@ -72,6 +74,7 @@ export function VoiceChannel({ enabled, mode, onFrame, onSpeaking, onStatus }: P
     const inRate = buffer.sampleRate || CAPTURE_RATE;
     if (chain.current.inRate !== inRate) {
       chain.current = createCaptureChain(modeRef.current, inRate);
+      sender.current.reset();
     }
     const c = chain.current;
     const mono = firstChannel(toFloat32(buffer.data), buffer.channels || 1);
@@ -83,7 +86,14 @@ export function VoiceChannel({ enabled, mode, onFrame, onSpeaking, onStatus }: P
       speaking.current = gate.open;
       onSpeakingRef.current?.(gate.open);
     }
-    const send = (samples: Float32Array) => onFrameRef.current?.(floatToBase64Pcm(samples), c.outRate);
+    const emit = (bytes: Uint8Array) => {
+      if (bytes.byteLength > 0) {
+        onPacketRef.current?.(bytes);
+      }
+    };
+    const send = (samples: Float32Array) => {
+      void sender.current.push(samples, c.outRate, emit);
+    };
     if (gate.opened && c.preroll) {
       send(fadeEdges(c.preroll, c.outRate, true, false));
     }
@@ -91,6 +101,7 @@ export function VoiceChannel({ enabled, mode, onFrame, onSpeaking, onStatus }: P
       send(lifted);
     } else if (gate.closed) {
       send(fadeEdges(lifted, c.outRate, false, true));
+      void sender.current.flush(c.outRate, emit);
     }
     c.preroll = gate.open ? null : lifted;
   };
@@ -109,6 +120,7 @@ export function VoiceChannel({ enabled, mode, onFrame, onSpeaking, onStatus }: P
 
   useEffect(() => {
     chain.current = createCaptureChain(mode, chain.current.inRate);
+    sender.current.reset();
   }, [mode]);
 
   useEffect(() => {
@@ -152,6 +164,8 @@ export function VoiceChannel({ enabled, mode, onFrame, onSpeaking, onStatus }: P
       }
       try {
         chain.current = createCaptureChain(modeRef.current, CAPTURE_RATE);
+        sender.current.reset();
+        await ensureVoiceCodec();
         await streamRef.current.start();
         if (cancelled || !enabledRef.current) {
           await stop();

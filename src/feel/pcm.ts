@@ -19,14 +19,30 @@ export function pcmPeak(data: ArrayBuffer | Float32Array): number {
   return pcmLevel(data);
 }
 
-export function floatToBase64Pcm(data: ArrayBuffer | Float32Array): string {
+export function floatToPcm16Bytes(data: ArrayBuffer | Float32Array): Uint8Array {
   const source = data instanceof Float32Array ? data : new Float32Array(data);
   const pcm = new Int16Array(source.length);
   for (let i = 0; i < source.length; i += 1) {
     const sample = clamp(source[i] ?? 0, -1, 1);
     pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
   }
-  return bytesToBase64(new Uint8Array(pcm.buffer));
+  return new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+}
+
+export function pcm16BytesToFloat(bytes: Uint8Array): Float32Array {
+  const aligned = new Uint8Array(bytes.byteLength);
+  aligned.set(bytes);
+  const samples = new Int16Array(aligned.buffer, 0, Math.floor(aligned.byteLength / 2));
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i] ?? 0;
+    out[i] = sample < 0 ? sample / 0x8000 : sample / 0x7fff;
+  }
+  return out;
+}
+
+export function floatToBase64Pcm(data: ArrayBuffer | Float32Array): string {
+  return bytesToBase64(floatToPcm16Bytes(data));
 }
 
 export function pcmLevel(data: ArrayBuffer | Float32Array): number {

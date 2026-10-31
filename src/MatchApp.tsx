@@ -271,7 +271,7 @@ export function MatchApp() {
         setInbox(payload.inbox);
         setGames(payload.games);
       },
-      onVoice: (seat, pcm, rate) => playSeatVoice(seat, pcm, rate),
+      onVoice: (frame) => playSeatVoice(frame),
       onChat: (message) => setChat((prev) => [...prev, message].slice(-40)),
       onChatHistory: setChat,
     });
@@ -1099,7 +1099,7 @@ export function MatchApp() {
       <VoiceChannel
         enabled={micOpen}
         mode={session.settings.voiceMode}
-        onFrame={(pcm, rate) => sendVoice(pcm, rate)}
+        onPacket={(frame) => sendVoice(frame)}
         onSpeaking={sendSpeaking}
         onStatus={onMicStatus}
       />
