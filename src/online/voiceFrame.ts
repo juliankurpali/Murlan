@@ -59,7 +59,7 @@ export function decodeVoiceFrame(bytes: Uint8Array): VoiceFrame | null {
     codec,
     seat,
     rate,
-    payload: bytes.subarray(VOICE_HEADER_BYTES, VOICE_HEADER_BYTES + length),
+    payload: bytes.slice(VOICE_HEADER_BYTES, VOICE_HEADER_BYTES + length),
   };
 }
 

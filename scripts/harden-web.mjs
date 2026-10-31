@@ -13,13 +13,14 @@ const http = relay.replace(/^ws/i, 'http');
 
 const policy = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
   `connect-src 'self' ${relay} ${http} data: blob:`,
   "worker-src 'self' blob:",
+  "child-src 'self' blob:",
   "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",

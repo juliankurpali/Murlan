@@ -140,6 +140,40 @@ export function createHighpass(cutoffHz: number, sampleRate: number): Filter {
   };
 }
 
+const VOICE_RATES = [8_000, 12_000, 16_000, 24_000, 48_000] as const;
+export type VoiceRate = (typeof VOICE_RATES)[number];
+
+export function snapVoiceRate(rate: number): VoiceRate {
+  let best: VoiceRate = 24_000;
+  let dist = Math.abs(rate - best);
+  for (const candidate of VOICE_RATES) {
+    const next = Math.abs(rate - candidate);
+    if (next < dist) {
+      best = candidate;
+      dist = next;
+    }
+  }
+  return best;
+}
+
+export function resampleLinear(samples: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (samples.length === 0 || fromRate <= 0 || toRate <= 0 || Math.round(fromRate) === Math.round(toRate)) {
+    return samples;
+  }
+  const ratio = fromRate / toRate;
+  const outLen = Math.max(1, Math.round(samples.length / ratio));
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i += 1) {
+    const x = i * ratio;
+    const i0 = Math.floor(x);
+    const frac = x - i0;
+    const a = samples[i0] ?? 0;
+    const b = samples[i0 + 1] ?? a;
+    out[i] = a + (b - a) * frac;
+  }
+  return out;
+}
+
 export type Decimator = Filter & { factor: number; outRate: number };
 
 // Integer-factor downsampler with a windowed-sinc anti-alias filter. State carries across

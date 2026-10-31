@@ -55,12 +55,20 @@ async function loadCaptureWorklet(ctx: AudioContext): Promise<boolean> {
       await ctx.audioWorklet.addModule(url);
       return true;
     } catch {
-      return false;
-    } finally {
       URL.revokeObjectURL(url);
+      return false;
     }
   })();
   return workletReady;
+}
+
+function attachScriptProcessor(ctx: AudioContext, onBuffer: (buffer: WebMicBuffer) => void): ScriptProcessorNode {
+  const node = ctx.createScriptProcessor(4096, 1, 1);
+  node.onaudioprocess = (event) => {
+    const copy = new Float32Array(event.inputBuffer.getChannelData(0));
+    onBuffer({ data: copy, sampleRate: ctx.sampleRate, channels: 1 });
+  };
+  return node;
 }
 
 export function createWebMic(onBuffer: (buffer: WebMicBuffer) => void): WebMic {
@@ -103,24 +111,26 @@ export function createWebMic(onBuffer: (buffer: WebMicBuffer) => void): WebMic {
       silent.gain.value = 0;
       const workletOk = await loadCaptureWorklet(ctx);
       if (workletOk) {
-        const node = new AudioWorkletNode(ctx, CAPTURE_WORKLET_NAME, {
-          numberOfInputs: 1,
-          numberOfOutputs: 1,
-          outputChannelCount: [1],
-          channelCount: 1,
-        });
-        node.port.onmessage = (event) => {
-          const samples = event.data as Float32Array;
-          onBuffer({ data: samples, sampleRate: ctx.sampleRate, channels: 1 });
-        };
-        tap = node;
+        try {
+          const node = new AudioWorkletNode(ctx, CAPTURE_WORKLET_NAME, {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [1],
+            channelCount: 1,
+          });
+          node.port.onmessage = (event) => {
+            const samples = event.data;
+            if (!(samples instanceof Float32Array) || samples.length === 0) {
+              return;
+            }
+            onBuffer({ data: new Float32Array(samples), sampleRate: ctx.sampleRate, channels: 1 });
+          };
+          tap = node;
+        } catch {
+          tap = attachScriptProcessor(ctx, onBuffer);
+        }
       } else {
-        const node = ctx.createScriptProcessor(4096, 1, 1);
-        node.onaudioprocess = (event) => {
-          const copy = new Float32Array(event.inputBuffer.getChannelData(0));
-          onBuffer({ data: copy.buffer, sampleRate: ctx.sampleRate, channels: 1 });
-        };
-        tap = node;
+        tap = attachScriptProcessor(ctx, onBuffer);
       }
       source.connect(tap);
       tap.connect(silent);

@@ -1,6 +1,6 @@
 import { base64PcmToFloat, floatToBase64Pcm, pcmLevel, pcmPeak, pcmRms } from '../src/feel/pcm';
 import { voiceCaptureTune, voicePlaybackTune } from '../src/feel/voiceMode';
-import { createVoiceProcessor } from '../src/feel/voiceProcess';
+import { createVoiceProcessor, resampleLinear, snapVoiceRate } from '../src/feel/voiceProcess';
 
 function tone(level: number, length = 480) {
   return new Float32Array(length).fill(level);
@@ -78,5 +78,19 @@ describe('table voice processing', () => {
     const decoded = base64PcmToFloat(floatToBase64Pcm(source));
     expect(decoded.length).toBe(64);
     expect(pcmRms(decoded)).toBeGreaterThan(0.15);
+  });
+
+  it('snaps capture rates onto legal Opus rates', () => {
+    expect(snapVoiceRate(24_000)).toBe(24_000);
+    expect(snapVoiceRate(16_000)).toBe(16_000);
+    expect(snapVoiceRate(22_050)).toBe(24_000);
+    expect(snapVoiceRate(44_100)).toBe(48_000);
+  });
+
+  it('resamples a constant tone without changing its level', () => {
+    const source = tone(0.4, 441);
+    const up = resampleLinear(source, 22_050, 24_000);
+    expect(up.length).toBe(Math.round(441 * (24_000 / 22_050)));
+    expect(pcmRms(up)).toBeCloseTo(0.4, 2);
   });
 });
