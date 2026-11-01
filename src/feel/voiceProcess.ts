@@ -21,6 +21,10 @@ export type VoiceProcessor = {
   lastPeak: () => number;
 };
 
+export function captureLikelySilent(gateOpen: boolean, rawRms: number, minOpen: number) {
+  return !gateOpen && rawRms < minOpen * 0.5;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -58,6 +62,7 @@ export function createVoiceProcessor(tune: VoiceProcessTune, sampleRate = 48_000
   let limitEnv = 0;
   let lastRms = 0;
   let lastPeak = 0;
+  let out = new Float32Array(0);
   const compAttack = coeff(0.008, sampleRate);
   const compRelease = coeff(0.12, sampleRate);
   const limitAttack = coeff(0.0008, sampleRate);
@@ -69,27 +74,30 @@ export function createVoiceProcessor(tune: VoiceProcessTune, sampleRate = 48_000
     lastPeak: () => lastPeak,
     process(data, voiced = true) {
       const source = toFloat32(data);
+      if (!voiced) {
+        return source;
+      }
       lastRms = pcmRms(source);
       lastPeak = pcmPeak(source);
       const dt = Math.max(source.length / sampleRate, 0.002);
-      if (voiced) {
-        const rmsAttack = 1 - Math.exp(-dt / 0.03);
-        const rmsRelease = 1 - Math.exp(-dt / 0.18);
-        rmsEnv += (lastRms - rmsEnv) * (lastRms > rmsEnv ? rmsAttack : rmsRelease);
+      const rmsAttack = 1 - Math.exp(-dt / 0.03);
+      const rmsRelease = 1 - Math.exp(-dt / 0.18);
+      rmsEnv += (lastRms - rmsEnv) * (lastRms > rmsEnv ? rmsAttack : rmsRelease);
 
-        let desired = agc;
-        if (rmsEnv >= tune.noiseFloor) {
-          desired = clamp(tune.targetRms / Math.max(rmsEnv, 1e-6), tune.minGain, tune.maxGain);
-        } else {
-          desired = agc + (1 - agc) * tune.floorDecay;
-          desired = clamp(desired, Math.min(agc, 1), Math.max(1, agc));
-        }
-        const tau = Math.max(desired < agc ? tune.agcDown : tune.agcUp, 0.02);
-        const follow = 1 - Math.exp(-dt / tau);
-        agc += (desired - agc) * follow;
+      let desired = agc;
+      if (rmsEnv >= tune.noiseFloor) {
+        desired = clamp(tune.targetRms / Math.max(rmsEnv, 1e-6), tune.minGain, tune.maxGain);
+      } else {
+        desired = agc + (1 - agc) * tune.floorDecay;
+        desired = clamp(desired, Math.min(agc, 1), Math.max(1, agc));
       }
+      const tau = Math.max(desired < agc ? tune.agcDown : tune.agcUp, 0.02);
+      const follow = 1 - Math.exp(-dt / tau);
+      agc += (desired - agc) * follow;
 
-      const out = new Float32Array(source.length);
+      if (out.length !== source.length) {
+        out = new Float32Array(source.length);
+      }
       for (let i = 0; i < source.length; i += 1) {
         let sample = (source[i] ?? 0) * agc;
         const abs = Math.abs(sample);
@@ -123,9 +131,12 @@ export function createHighpass(cutoffHz: number, sampleRate: number): Filter {
   let x2 = 0;
   let y1 = 0;
   let y2 = 0;
+  let out = new Float32Array(0);
   return {
     process(data) {
-      const out = new Float32Array(data.length);
+      if (out.length !== data.length) {
+        out = new Float32Array(data.length);
+      }
       for (let i = 0; i < data.length; i += 1) {
         const x = data[i] ?? 0;
         const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
@@ -199,17 +210,24 @@ export function createDecimator(inRate: number, targetRate: number): Decimator {
   for (let i = 0; i < taps; i += 1) {
     kernel[i] = kernel[i]! / sum;
   }
-  let history = new Float32Array(taps - 1);
+  const history = new Float32Array(taps - 1);
+  let joined = new Float32Array(0);
+  let out = new Float32Array(0);
   let phase = 0;
   return {
     factor,
     outRate,
     process(data) {
-      const joined = new Float32Array(history.length + data.length);
+      const need = history.length + data.length;
+      if (joined.length !== need) {
+        joined = new Float32Array(need);
+      }
       joined.set(history);
       joined.set(data, history.length);
       const count = Math.max(0, Math.ceil((data.length - phase) / factor));
-      const out = new Float32Array(count);
+      if (out.length !== count) {
+        out = new Float32Array(count);
+      }
       for (let k = 0; k < count; k += 1) {
         const end = history.length + phase + k * factor;
         let acc = 0;
@@ -219,7 +237,7 @@ export function createDecimator(inRate: number, targetRate: number): Decimator {
         out[k] = acc;
       }
       phase = phase + count * factor - data.length;
-      history = joined.slice(joined.length - (taps - 1));
+      history.set(joined.subarray(joined.length - (taps - 1)));
       return out;
     },
   };

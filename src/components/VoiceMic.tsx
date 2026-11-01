@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Language } from '../application/types';
 import { t } from '../i18n';
 import { colors, hitSlop, motion } from '../theme';
@@ -38,7 +38,7 @@ export function VoiceMic({
   const talking = Boolean(live && speaking);
 
   useEffect(() => {
-    if (!talking) {
+    if (!talking || Platform.OS === 'web') {
       pulse.setValue(1);
       return;
     }

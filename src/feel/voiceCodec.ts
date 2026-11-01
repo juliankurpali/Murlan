@@ -231,7 +231,8 @@ export function createVoiceSender() {
       if (samples.length === 0) {
         return Promise.resolve();
       }
-      return enqueue(() => encode(copyFloat(samples), rate, emit));
+      const held = copyFloat(samples);
+      return enqueue(() => encode(held, rate, emit));
     },
     flush(rate: number, emit: (bytes: Uint8Array) => void) {
       return enqueue(async () => {
@@ -274,7 +275,7 @@ export function createVoiceSender() {
 }
 
 export async function decodeVoicePayload(frame: VoiceFrame): Promise<Float32Array> {
-  const payload = copyBytes(frame.payload);
+  const payload = frame.payload;
   if (payload.byteLength === 0) {
     return new Float32Array(0);
   }
@@ -287,7 +288,7 @@ export async function decodeVoicePayload(frame: VoiceFrame): Promise<Float32Arra
   }
   try {
     const decoded = decoder.decodeFloat(payload);
-    return decoded instanceof Float32Array ? new Float32Array(decoded) : new Float32Array(0);
+    return decoded instanceof Float32Array ? copyFloat(decoded) : new Float32Array(0);
   } catch {
     return new Float32Array(0);
   }

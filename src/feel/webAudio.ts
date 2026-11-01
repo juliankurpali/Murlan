@@ -123,7 +123,7 @@ export function createWebMic(onBuffer: (buffer: WebMicBuffer) => void): WebMic {
             if (!(samples instanceof Float32Array) || samples.length === 0) {
               return;
             }
-            onBuffer({ data: new Float32Array(samples), sampleRate: ctx.sampleRate, channels: 1 });
+            onBuffer({ data: samples, sampleRate: ctx.sampleRate, channels: 1 });
           };
           tap = node;
         } catch {

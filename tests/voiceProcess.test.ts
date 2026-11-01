@@ -1,6 +1,6 @@
 import { base64PcmToFloat, floatToBase64Pcm, pcmLevel, pcmPeak, pcmRms } from '../src/feel/pcm';
 import { voiceCaptureTune, voicePlaybackTune } from '../src/feel/voiceMode';
-import { createVoiceProcessor, resampleLinear, snapVoiceRate } from '../src/feel/voiceProcess';
+import { captureLikelySilent, createVoiceProcessor, resampleLinear, snapVoiceRate } from '../src/feel/voiceProcess';
 
 function tone(level: number, length = 480) {
   return new Float32Array(length).fill(level);
@@ -24,12 +24,28 @@ describe('table voice processing', () => {
 
   it('normalizes quiet speech toward the table target without a sudden jump', () => {
     const processor = createVoiceProcessor(voiceCaptureTune('natural'), 48_000);
-    const first = processor.process(tone(0.02));
+    const first = Float32Array.from(processor.process(tone(0.02)));
     const later = run(processor, 0.02, 24);
     expect(pcmRms(first) / 0.02).toBeLessThan(2.2);
     expect(pcmRms(later)).toBeGreaterThan(pcmRms(first));
     expect(pcmRms(later)).toBeGreaterThan(0.05);
     expect(processor.gain()).toBeLessThanOrEqual(voiceCaptureTune('natural').maxGain);
+  });
+
+  it('skips the capture filter chain only when the gate is closed and the buffer is obviously quiet', () => {
+    expect(captureLikelySilent(false, 0.001, 0.0035)).toBe(true);
+    expect(captureLikelySilent(false, 0.02, 0.0035)).toBe(false);
+    expect(captureLikelySilent(true, 0.001, 0.0035)).toBe(false);
+  });
+
+  it('does not shape samples when the gate is closed', () => {
+    const processor = createVoiceProcessor(voiceCaptureTune('natural'), 24_000);
+    run(processor, 0.04, 10);
+    const held = processor.gain();
+    const silence = tone(0.0005, 480);
+    const out = processor.process(silence, false);
+    expect(Array.from(out)).toEqual(Array.from(silence));
+    expect(processor.gain()).toBe(held);
   });
 
   it('does not endlessly amplify room noise below the floor', () => {

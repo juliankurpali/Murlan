@@ -2,6 +2,14 @@ export function toFloat32(data: ArrayBuffer | Float32Array): Float32Array {
   return data instanceof Float32Array ? data : new Float32Array(data);
 }
 
+export function copyFloatInto(dest: Float32Array | null, source: Float32Array): Float32Array {
+  if (!dest || dest.length !== source.length) {
+    dest = new Float32Array(source.length);
+  }
+  dest.set(source);
+  return dest;
+}
+
 export function pcmRms(data: ArrayBuffer | Float32Array): number {
   const source = toFloat32(data);
   if (source.length === 0) {

@@ -601,8 +601,6 @@ export function MatchApp() {
     session.match && (session.screen === 'table' || online)
       ? `${session.match.handIndex}-${session.match.currentSeat}-${session.match.history.length}-${session.match.phase}-${localSeat}-${botSeats.join('.')}`
       : '';
-  const [turnProgress, setTurnProgress] = useState(0);
-
   useEffect(() => {
     const match = session.match;
     if (!match || (session.screen !== 'table' && !online)) {
@@ -620,14 +618,8 @@ export function MatchApp() {
     const botTurn = botSeats.includes(match.currentSeat);
     const dealDelay = match.history.length === 0 ? motion.dealMs : 0;
     const duration = durationForCurrentTurn(match, botSeats, localSeat, online);
-    setTurnProgress(0);
-    let tick: ReturnType<typeof setInterval> | undefined;
     let turnHandle: ReturnType<typeof setTimeout> | undefined;
     const startTurn = () => {
-      const started = Date.now();
-      tick = setInterval(() => {
-        setTurnProgress(Math.min(1, (Date.now() - started) / duration));
-      }, 80);
       if (online) {
         return;
       }
@@ -648,23 +640,10 @@ export function MatchApp() {
       if (turnHandle) {
         clearTimeout(turnHandle);
       }
-      if (tick) {
-        clearInterval(tick);
-      }
     };
   }, [turnKey, commitMatch, online, botSeats, localSeat]);
 
   const view = session.match ? toPublicView(session.match, localSeat) : null;
-  const turnRemainingSec =
-    session.match && view && view.phase === 'playing'
-      ? Math.max(
-          0,
-          Math.ceil(
-            ((1 - turnProgress) * durationForCurrentTurn(session.match, botSeats, localSeat, online)) /
-              1000,
-          ),
-        )
-      : 0;
   const exchanging = session.match?.phase === 'exchanging';
   const legalMoves = useMemo(
     () => (session.match && session.match.phase === 'playing' ? legalMovesForSeat(session.match, localSeat) : []),
@@ -958,8 +937,6 @@ export function MatchApp() {
           humanTurn={
             view.currentSeat === localSeat && (view.phase === 'playing' || view.phase === 'exchanging')
           }
-          turnProgress={turnProgress}
-          turnRemainingSec={turnRemainingSec}
           turnDurationMs={
             session.match
               ? durationForCurrentTurn(session.match, botSeats, localSeat, online)

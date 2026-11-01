@@ -24,7 +24,6 @@ type Props = {
   lastPlayed: boolean;
   partner?: boolean;
   side: Side;
-  turnProgress: number;
   appearance: SeatAppearance;
   dealing?: boolean;
   teamLabel: string | null;
@@ -42,7 +41,6 @@ type Props = {
   connectionLabel?: string | null;
   place?: number | null;
   placeLabel?: string | null;
-  remainingSec?: number;
   turnDurationMs?: number;
   turnToken?: string;
 };
@@ -59,7 +57,6 @@ export function SeatRack({
   lastPlayed,
   partner,
   side,
-  turnProgress,
   appearance = { profileUri: null, tone: 0 },
   dealing = false,
   teamLabel,
@@ -70,7 +67,6 @@ export function SeatRack({
   connectionLabel = null,
   place = null,
   placeLabel = null,
-  remainingSec = 0,
   turnDurationMs,
   turnToken,
 }: Props) {
@@ -96,14 +92,12 @@ export function SeatRack({
       finished={finished}
       lastPlayed={lastPlayed}
       partner={partner}
-      turnProgress={turnProgress}
       teamLabel={teamLabel}
       size={32}
       spotlight={spotlight}
       voice={voice}
       connectionLabel={connectionLabel}
       turnLabel={isTurn && side !== 'south' ? t(language, 'turn') : null}
-      remainingSec={isTurn ? remainingSec : 0}
       turnDurationMs={turnDurationMs}
       turnToken={turnToken}
       timerAbove={side !== 'south'}

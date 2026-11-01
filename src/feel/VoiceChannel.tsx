@@ -3,10 +3,16 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import { AudioModule, useAudioStream } from 'expo-audio';
 import { pauseFeelPlayback, setVoiceLive } from './index';
 import { createWebMic, WebMicBuffer } from './webAudio';
-import { fadeEdges, firstChannel, pcmRms, toFloat32 } from './pcm';
+import { copyFloatInto, fadeEdges, firstChannel, pcmRms, toFloat32 } from './pcm';
 import { createVoiceSender, ensureVoiceCodec } from './voiceCodec';
 import { remoteVoiceActive } from './voicePlay';
-import { createDecimator, createHighpass, createVoiceGate, createVoiceProcessor } from './voiceProcess';
+import {
+  captureLikelySilent,
+  createDecimator,
+  createHighpass,
+  createVoiceGate,
+  createVoiceProcessor,
+} from './voiceProcess';
 import { VOICE_SAMPLE_RATE, VoiceMode, voiceCaptureTune, voiceGateTune, voiceHighpassHz } from './voiceMode';
 
 export type MicCaptureStatus = 'live' | 'muted' | 'denied' | 'unavailable' | 'interrupted';
@@ -41,13 +47,15 @@ function wait(ms: number) {
 }
 
 function createCaptureChain(mode: VoiceMode, inRate: number) {
+  const gateTune = voiceGateTune(mode);
   const decimator = createDecimator(inRate, VOICE_SAMPLE_RATE[mode]);
   return {
     inRate,
     outRate: decimator.outRate,
+    minOpen: gateTune.minOpen,
     highpass: createHighpass(voiceHighpassHz(mode), inRate),
     decimator,
-    gate: createVoiceGate(voiceGateTune(mode)),
+    gate: createVoiceGate(gateTune),
     processor: createVoiceProcessor(voiceCaptureTune(mode), decimator.outRate),
     preroll: null as Float32Array | null,
   };
@@ -78,10 +86,14 @@ export function VoiceChannel({ enabled, mode, onPacket, onSpeaking, onStatus }: 
     }
     const c = chain.current;
     const mono = firstChannel(toFloat32(buffer.data), buffer.channels || 1);
+    const rawRms = pcmRms(mono);
+    if (captureLikelySilent(c.gate.isOpen(), rawRms, c.minOpen)) {
+      c.gate.update(rawRms, Date.now(), remoteVoiceActive());
+      return;
+    }
     const down = c.decimator.process(c.highpass.process(mono));
     const now = Date.now();
     const gate = c.gate.update(pcmRms(down), now, remoteVoiceActive(now));
-    const lifted = c.processor.process(down, gate.open);
     if (gate.open !== speaking.current) {
       speaking.current = gate.open;
       onSpeakingRef.current?.(gate.open);
@@ -95,15 +107,18 @@ export function VoiceChannel({ enabled, mode, onPacket, onSpeaking, onStatus }: 
       void sender.current.push(samples, c.outRate, emit);
     };
     if (gate.opened && c.preroll) {
-      send(fadeEdges(c.preroll, c.outRate, true, false));
+      send(fadeEdges(c.processor.process(c.preroll, true), c.outRate, true, false));
     }
     if (gate.open) {
-      send(lifted);
+      send(c.processor.process(down, true));
+      c.preroll = null;
     } else if (gate.closed) {
-      send(fadeEdges(lifted, c.outRate, false, true));
+      send(fadeEdges(c.processor.process(down, true), c.outRate, false, true));
       void sender.current.flush(c.outRate, emit);
+      c.preroll = null;
+    } else {
+      c.preroll = copyFloatInto(c.preroll, down);
     }
-    c.preroll = gate.open ? null : lifted;
   };
   const onBufferRef = useRef(onBuffer);
   onBufferRef.current = onBuffer;

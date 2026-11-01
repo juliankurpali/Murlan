@@ -90,6 +90,13 @@ describe('voice capture pipeline', () => {
     }
     expect(processor.gain()).toBeCloseTo(held, 5);
   });
+
+  it('keeps a closed-gate frame at the same level as the downsampled input', () => {
+    const processor = createVoiceProcessor(voiceCaptureTune('natural'), 24_000);
+    const quiet = frame(0.0008);
+    const out = processor.process(quiet, false);
+    expect(pcmRms(out)).toBeCloseTo(pcmRms(quiet), 5);
+  });
 });
 
 describe('voice jitter buffer', () => {

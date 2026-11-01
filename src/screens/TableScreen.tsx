@@ -35,8 +35,6 @@ type Props = {
   legalMoveCount: number;
   selectionLegal: boolean | null;
   humanTurn: boolean;
-  turnProgress: number;
-  turnRemainingSec?: number;
   turnDurationMs?: number;
   humanAppearance: SeatAppearance;
   localSeat?: SeatId;
@@ -74,8 +72,6 @@ export function TableScreen({
   legalCardIds,
   selectionLegal,
   humanTurn,
-  turnProgress,
-  turnRemainingSec = 0,
   turnDurationMs,
   humanAppearance,
   localSeat = 0,
@@ -261,8 +257,6 @@ export function TableScreen({
         placeLabel={place ? t(language, placeKeys[place - 1] ?? 'fourth') : null}
         partner={seat % 2 === localSeat % 2}
         side={side}
-        turnProgress={view.currentSeat === seat ? turnProgress : 0}
-        remainingSec={view.currentSeat === seat ? turnRemainingSec : 0}
         turnDurationMs={turnDurationMs}
         turnToken={`${view.handIndex}-${view.currentSeat}-${view.history.length}`}
         appearance={appearanceForSeat(seat, humanAppearance, localSeat)}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { ConnectionState } from '../online/lifecycle';
 import { colors, fonts, motion } from '../theme';
 import { PlayerAvatar } from './PlayerAvatar';
@@ -15,7 +15,6 @@ type Props = {
   finished: boolean;
   lastPlayed: boolean;
   partner?: boolean;
-  turnProgress: number;
   teamLabel: string | null;
   size?: number;
   spotlight?: boolean;
@@ -30,7 +29,6 @@ type Props = {
   } | null;
   connectionLabel?: string | null;
   turnLabel?: string | null;
-  remainingSec?: number;
   timerAbove?: boolean;
   turnDurationMs?: number;
   turnToken?: string;
@@ -55,7 +53,6 @@ export function SeatPortrait({
   voice = null,
   connectionLabel = null,
   turnLabel = null,
-  remainingSec = 0,
   timerAbove = true,
   turnDurationMs = motion.humanTurnMs,
   turnToken = '',
@@ -79,7 +76,7 @@ export function SeatPortrait({
       <Animated.View
         style={[
           styles.barFill,
-          (urgentTurn || (remainingSec > 0 && remainingSec <= 5)) && styles.barUrgent,
+          urgentTurn && styles.barUrgent,
           {
             width: fill.interpolate({
               inputRange: [0, 1],
@@ -102,8 +99,15 @@ export function SeatPortrait({
     fill.setValue(1);
     setUrgentTurn(false);
     const duration = Math.max(400, turnDurationMs);
+    const cutoff = 5000 / duration;
+    let lastUrgent = false;
     const sub = fill.addListener(({ value }) => {
-      setUrgentTurn(value <= 5000 / duration);
+      const next = value <= cutoff;
+      if (next === lastUrgent) {
+        return;
+      }
+      lastUrgent = next;
+      setUrgentTurn(next);
     });
     const anim = Animated.timing(fill, {
       toValue: 0,
@@ -120,8 +124,8 @@ export function SeatPortrait({
   const lit = isTurn || spotlight;
 
   useEffect(() => {
-    if (!lit) {
-      pulse.setValue(0.55);
+    if (!lit || Platform.OS === 'web') {
+      pulse.setValue(lit ? 1 : 0.55);
       return;
     }
     const loop = Animated.loop(
@@ -149,10 +153,11 @@ export function SeatPortrait({
         (passed || dimmed) && !isTurn && !place && styles.faded,
         spotlight && !isTurn && styles.spotlight,
         isTurn && styles.turnGlow,
-        lit && {
-          opacity: pulse.interpolate({ inputRange: [0.45, 1], outputRange: [0.9, 1] }),
-          transform: [{ scale: pulse.interpolate({ inputRange: [0.45, 1], outputRange: [1, isTurn ? 1.08 : 1.06] }) }],
-        },
+        lit &&
+          Platform.OS !== 'web' && {
+            opacity: pulse.interpolate({ inputRange: [0.45, 1], outputRange: [0.9, 1] }),
+            transform: [{ scale: pulse.interpolate({ inputRange: [0.45, 1], outputRange: [1, isTurn ? 1.08 : 1.06] }) }],
+          },
       ]}
     >
       <View style={[styles.avatarBox, { width: ring, height: ring }]}>

@@ -88,19 +88,13 @@ export function playSeatVoice(frame: VoiceFrame) {
   if (frame.seat > 3) {
     return;
   }
-  const owned: VoiceFrame = {
-    codec: frame.codec,
-    seat: frame.seat,
-    rate: frame.rate,
-    payload: new Uint8Array(frame.payload),
-  };
-  void decodeVoicePayload(owned)
+  void decodeVoicePayload(frame)
     .then((samples) => {
       if (samples.length === 0) {
         return;
       }
-      const rate = owned.rate || 16_000;
-      lineFor(owned.seat as SeatId, rate).line.push(samples, rate);
+      const rate = frame.rate || 16_000;
+      lineFor(frame.seat as SeatId, rate).line.push(samples, rate);
     })
     .catch(() => undefined);
 }

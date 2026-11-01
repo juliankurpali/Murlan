@@ -55,6 +55,11 @@ function sendBytes(bytes: Uint8Array) {
   if (!socket || socket.readyState !== WebSocket.OPEN || bytes.byteLength === 0) {
     return;
   }
+  const buffer = bytes.buffer;
+  if (bytes.byteOffset === 0 && bytes.byteLength === buffer.byteLength && buffer instanceof ArrayBuffer) {
+    socket.send(buffer);
+    return;
+  }
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   socket.send(copy.buffer);
@@ -68,7 +73,7 @@ function handleBinary(data: ArrayBuffer | Blob | ArrayBufferView) {
     }
   };
   if (data instanceof ArrayBuffer) {
-    consume(data.slice(0));
+    consume(data);
     return;
   }
   if (ArrayBuffer.isView(data)) {
