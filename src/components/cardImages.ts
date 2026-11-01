@@ -1,5 +1,5 @@
 import { ImageSourcePropType } from 'react-native';
-import { Card } from '../domain';
+import { Card, faceArtId } from '../domain';
 
 /** Public-domain English-pattern faces (Byron Knoll), via hayeah/playing-cards-assets. */
 export const CARD_BACK: ImageSourcePropType = require('../../assets/cards/back.png');
@@ -62,5 +62,5 @@ const FACES: Record<string, ImageSourcePropType> = {
 };
 
 export function cardFaceSource(card: Card): ImageSourcePropType {
-  return FACES[card.id] ?? CARD_BACK;
+  return FACES[faceArtId(card)] ?? FACES[card.id.split('#')[0] ?? ''] ?? CARD_BACK;
 }

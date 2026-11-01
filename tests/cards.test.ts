@@ -3,6 +3,7 @@ import {
   compareCards,
   createDeck,
   createSeededRandom,
+  faceArtId,
   shuffleDeck,
 } from '../src/domain';
 
@@ -23,6 +24,14 @@ describe('deck and ranks', () => {
       expect(cardStrength(ordered[i]!)).toBeGreaterThan(cardStrength(ordered[i - 1]!));
       expect(compareCards(ordered[i - 1]!, ordered[i]!)).toBeLessThan(0);
     }
+  });
+
+  it('maps Super duplicate ids onto classic face-art keys', () => {
+    expect(faceArtId({ id: 'S3#0', kind: 'standard', suit: 'spades', rank: 3 })).toBe('S3');
+    expect(faceArtId({ id: 'HA#5', kind: 'standard', suit: 'hearts', rank: 14 })).toBe('HA');
+    expect(faceArtId({ id: 'JB#1', kind: 'joker', color: 'black' })).toBe('JB');
+    expect(faceArtId({ id: 'JR#0', kind: 'joker', color: 'red' })).toBe('JR');
+    expect(faceArtId({ id: 'C2', kind: 'standard', suit: 'clubs', rank: 15 })).toBe('C2');
   });
 
   it('shuffles deterministically with the same seed', () => {

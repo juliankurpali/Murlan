@@ -104,7 +104,7 @@ export function CardFace({
     const face = (
       <MotionView
         layout={sharedLayout}
-        layoutId={sharedLayout ? `murlan-card-${card.id}` : undefined}
+        layoutId={sharedLayout ? `murlan-card-${card.id.replaceAll('#', '-')}` : undefined}
         initial={false}
         animate={{ y: selected && liftOnSelect ? -14 : 0, scale: 1 }}
         whileHover={onPress && !disabled && !selected ? { y: -4 } : undefined}

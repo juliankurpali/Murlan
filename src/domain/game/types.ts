@@ -1,9 +1,9 @@
 import { Card } from '../cards/types';
 import { RulesConfig } from '../rules/types';
 
-export type SeatId = 0 | 1 | 2 | 3;
+export type SeatId = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type MatchMode = '2v2';
+export type MatchMode = '2v2' | 'chaos' | 'super';
 
 export type GamePhase = 'playing' | 'exchanging' | 'handComplete' | 'matchComplete';
 
@@ -58,7 +58,7 @@ export type PublicPlayEvent =
   | { kind: 'trickWon'; seat: SeatId }
   | { kind: 'finished'; seat: SeatId; place: number };
 
-export type MatchWinner = SeatId | 'team0' | 'team1';
+export type MatchWinner = SeatId | 'team0' | 'team1' | 'team2';
 
 export type PendingExchange = {
   firstSeat: SeatId;
@@ -87,49 +87,61 @@ export type GameState = {
   rules: RulesConfig;
   handIndex: number;
   dealerSeat: SeatId;
-  hands: [Card[], Card[], Card[], Card[]];
+  hands: Card[][];
+  teamOf: number[];
+  undealt: Card[];
   currentSeat: SeatId;
   trick: TrickState;
   finishOrder: SeatId[];
-  scores: [number, number, number, number];
+  scores: number[];
   targetScore: number;
   phase: GamePhase;
   history: PublicPlayEvent[];
   winner: MatchWinner | null;
-  lastHandPoints: [number, number, number, number] | null;
+  lastHandPoints: number[] | null;
   lastExchange: CardExchangeResult | null;
   pendingExchange: PendingExchange | null;
+  extraTurnSeat?: SeatId | null;
+  extraTurnUsed?: boolean;
+};
+
+export type TeamScores = {
+  team0: number;
+  team1: number;
+  team2?: number;
 };
 
 export type PublicMatchView = {
   mode: MatchMode;
   viewerSeat: SeatId;
   ownHand: Card[];
-  cardCounts: [number, number, number, number];
+  cardCounts: number[];
   currentSeat: SeatId;
   trick: TrickState;
-  scores: [number, number, number, number];
-  teamScores: { team0: number; team1: number };
+  scores: number[];
+  teamScores: TeamScores;
+  teamOf: number[];
   finishOrder: SeatId[];
   phase: GamePhase;
   targetScore: number;
   handIndex: number;
   winner: MatchWinner | null;
-  lastHandPoints: [number, number, number, number] | null;
+  lastHandPoints: number[] | null;
   lastExchange: CardExchangeResult | null;
   pendingExchange: PendingExchange | null;
   cardExchangeEnabled: boolean;
+  undealtCount: number;
   history: PublicPlayEvent[];
 };
 
 export type BotView = {
   seat: SeatId;
   hand: Card[];
-  cardCounts: [number, number, number, number];
+  cardCounts: number[];
   currentSeat: SeatId;
   trick: TrickState;
   finishOrder: SeatId[];
-  scores: [number, number, number, number];
+  scores: number[];
   history: PublicPlayEvent[];
   mode: MatchMode;
   rules: RulesConfig;
@@ -147,6 +159,10 @@ export function isCombination(value: DetectedCombination): value is Combination 
 
 export const SEATS: SeatId[] = [0, 1, 2, 3];
 
-export function teamId(seat: SeatId): 0 | 1 {
-  return (seat % 2) as 0 | 1;
+export function teamId(seat: SeatId, teamOf?: number[]): number {
+  const mapped = teamOf?.[seat];
+  if (mapped === 0 || mapped === 1 || mapped === 2) {
+    return mapped;
+  }
+  return seat % 2;
 }

@@ -1,20 +1,26 @@
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { ChatMessage } from '../online/chat';
-import { colors, fonts, motion, seatToken } from '../theme';
+import { colors, fonts, motion, teamToken } from '../theme';
 
 type Props = {
   messages: ChatMessage[];
+  teamOf?: number[];
 };
 
-export function TableChatFeed({ messages }: Props) {
+export function TableChatFeed({ messages, teamOf }: Props) {
   if (messages.length === 0) {
     return null;
   }
   return (
     <View style={styles.box} pointerEvents="none">
       {messages.map((line) => (
-        <FadeLine key={line.id} name={line.name} text={line.text} color={seatToken[line.seat] ?? colors.gold} />
+        <FadeLine
+          key={line.id}
+          name={line.name}
+          text={line.text}
+          color={teamToken(teamOf?.[line.seat] ?? line.seat % 2)}
+        />
       ))}
     </View>
   );

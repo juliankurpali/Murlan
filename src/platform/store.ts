@@ -4,6 +4,8 @@ import { sanitizeChat } from '../online/chat';
 import { rememberIntent } from '../online/lifecycle';
 import { avatarFor, createRoomCode, isUsername, normalizeUsername, randomId, suggestUsername, withAiLabel } from './ids';
 import { hashIdentity, hashToken, isDigest, randomSessionToken, sameDigest } from './identity';
+import { defaultTeamOf, SeatId, teamScores } from '../domain';
+import { tallySeries } from './match';
 import {
   AdminGameView,
   AdminPlayerView,
@@ -190,22 +192,47 @@ export class PlatformStore {
     for (const game of parsed.games ?? []) {
       this.games.set(game.id, {
         ...game,
-        mode: '2v2',
+        mode: game.mode === 'chaos' ? 'chaos' : game.mode === 'super' ? 'super' : '2v2',
+        chaos: game.mode === 'chaos' ? (game.chaos ?? null) : null,
         chat: game.status === 'complete' ? [] : (game.chat ?? []),
         nextHandReady: game.nextHandReady ?? [],
-        seats: game.seats.map((seat) => ({
-          ...seat,
-          lobbyReady: seat.lobbyReady ?? Boolean(seat.isBot || seat.userId === game.createdBy),
-        })) as PlatformGame['seats'],
+        playAgainReady: game.playAgainReady ?? [],
+        series: game.series ?? {
+          matches: 0,
+          teamWins: Array.from({ length: game.mode === 'super' ? 3 : 2 }, () => 0),
+          seatWins: Array.from({ length: game.mode === 'super' ? 6 : 4 }, () => 0),
+        },
+        resultRecorded: Boolean(game.resultRecorded),
+        statsRecorded: Boolean(game.statsRecorded),
+        seats: (() => {
+          const seats = game.seats.map((seat) => ({
+            ...seat,
+            lobbyReady: seat.lobbyReady ?? Boolean(seat.isBot || seat.userId === game.createdBy),
+          }));
+          if (game.mode === 'super') {
+            while (seats.length < 6) {
+              seats.push(emptySeat());
+            }
+            return seats.slice(0, 6);
+          }
+          return seats.slice(0, 4);
+        })() as PlatformGame['seats'],
+        match: game.match
+          ? {
+              ...game.match,
+              teamOf: game.match.teamOf ?? defaultTeamOf(game.match.mode ?? game.mode),
+              undealt: game.match.undealt ?? [],
+            }
+          : game.match,
       });
     }
     this.invites = (parsed.invites ?? []).map((row) => ({
       ...row,
-      preferredTeam: row.preferredTeam === 0 || row.preferredTeam === 1 ? row.preferredTeam : null,
+      preferredTeam: row.preferredTeam === 0 || row.preferredTeam === 1 || row.preferredTeam === 2 ? row.preferredTeam : null,
     }));
     this.joinRequests = (parsed.joinRequests ?? []).map((row) => ({
       ...row,
-      preferredTeam: row.preferredTeam === 0 || row.preferredTeam === 1 ? row.preferredTeam : null,
+      preferredTeam: row.preferredTeam === 0 || row.preferredTeam === 1 || row.preferredTeam === 2 ? row.preferredTeam : null,
     }));
     this.seatSwitches = parsed.seatSwitches ?? [];
     this.history = parsed.history ?? [];
@@ -528,9 +555,14 @@ export class PlatformStore {
       updatedAt: Date.now(),
       seats,
       match: null,
+      chaos: null,
       chat: [],
       seenIntents: {},
       nextHandReady: [],
+      playAgainReady: [],
+      series: { matches: 0, teamWins: [0, 0], seatWins: [0, 0, 0, 0] },
+      resultRecorded: false,
+      statsRecorded: false,
     };
     this.games.set(game.id, game);
     this.save();
@@ -548,15 +580,28 @@ export class PlatformStore {
     return seat.isBot && game.status === 'lobby';
   }
 
-  private seatOrder(preferSeat?: number, preferTeam?: 0 | 1): number[] {
-    const teamOrder = preferTeam === 0 ? [0, 2, 1, 3] : preferTeam === 1 ? [1, 3, 0, 2] : [0, 1, 2, 3];
-    if (preferSeat === undefined || preferSeat < 0 || preferSeat > 3) {
+  private seatOrder(game: PlatformGame, preferSeat?: number, preferTeam?: 0 | 1 | 2): number[] {
+    const superTable = game.seats.length === 6;
+    const teamOrder = superTable
+      ? preferTeam === 0
+        ? [0, 3, 1, 4, 2, 5]
+        : preferTeam === 1
+          ? [1, 4, 0, 3, 2, 5]
+          : preferTeam === 2
+            ? [2, 5, 0, 3, 1, 4]
+            : [0, 1, 2, 3, 4, 5]
+      : preferTeam === 0
+        ? [0, 2, 1, 3]
+        : preferTeam === 1
+          ? [1, 3, 0, 2]
+          : [0, 1, 2, 3];
+    if (preferSeat === undefined || preferSeat < 0 || preferSeat >= game.seats.length) {
       return teamOrder;
     }
     return [preferSeat, ...teamOrder.filter((seat) => seat !== preferSeat)];
   }
 
-  joinGame(user: PlatformPlayer, code: string, options?: { seat?: number; team?: 0 | 1 }): PlatformGame {
+  joinGame(user: PlatformPlayer, code: string, options?: { seat?: number; team?: 0 | 1 | 2 }): PlatformGame {
     const game = [...this.games.values()].find((row) => row.code === code.trim().toUpperCase());
     if (!game) {
       throw new Error('room-missing');
@@ -578,7 +623,7 @@ export class PlatformStore {
       return game;
     }
     const invite = this.invites.find((row) => row.gameId === game.id && row.toId === user.id && row.status === 'pending');
-    const order = this.seatOrder(options?.seat, options?.team ?? invite?.preferredTeam ?? undefined);
+    const order = this.seatOrder(game, options?.seat, options?.team ?? invite?.preferredTeam ?? undefined);
     const index = order.find((seat) => this.canTakeSeat(game, seat)) ?? -1;
     if (index < 0) {
       throw new Error('room-full');
@@ -611,7 +656,7 @@ export class PlatformStore {
   requestJoin(
     user: PlatformPlayer,
     code: string,
-    options?: { seat?: number; team?: 0 | 1 },
+    options?: { seat?: number; team?: 0 | 1 | 2 },
   ): { game: PlatformGame; pending: boolean } {
     const game = [...this.games.values()].find((row) => row.code === code.trim().toUpperCase());
     if (!game) {
@@ -637,7 +682,7 @@ export class PlatformStore {
       (row) => row.gameId === game.id && row.fromId === user.id && row.status === 'pending',
     );
     if (existing) {
-      if (options?.team === 0 || options?.team === 1) {
+      if (options?.team === 0 || options?.team === 1 || options?.team === 2) {
         existing.preferredTeam = options.team;
       }
       this.save();
@@ -652,7 +697,7 @@ export class PlatformStore {
       fromId: user.id,
       status: 'pending',
       createdAt: Date.now(),
-      preferredTeam: options?.team === 0 || options?.team === 1 ? options.team : null,
+      preferredTeam: options?.team === 0 || options?.team === 1 || options?.team === 2 ? options.team : null,
     });
     this.notify(
       game.createdBy,
@@ -850,6 +895,37 @@ export class PlatformStore {
     );
   }
 
+  private resizeSeats(game: PlatformGame, count: number) {
+    if (game.seats.length === count) {
+      return;
+    }
+    if (game.seats.length < count) {
+      while (game.seats.length < count) {
+        game.seats.push(emptySeat());
+      }
+      return;
+    }
+    game.seats = game.seats.slice(0, count);
+  }
+
+  setMatchMode(user: PlatformPlayer, game: PlatformGame, mode: PlatformGame['mode']) {
+    this.assertHost(user, game);
+    if (game.status !== 'lobby') {
+      throw new Error('room-started');
+    }
+    game.mode = mode === 'chaos' ? 'chaos' : mode === 'super' ? 'super' : '2v2';
+    this.resizeSeats(game, game.mode === 'super' ? 6 : 4);
+    if (game.series.matches === 0) {
+      game.series = {
+        matches: 0,
+        teamWins: Array.from({ length: game.mode === 'super' ? 3 : 2 }, () => 0),
+        seatWins: Array.from({ length: game.seats.length }, () => 0),
+      };
+    }
+    game.updatedAt = Date.now();
+    this.save();
+  }
+
   assertCanStart(user: PlatformPlayer, game: PlatformGame) {
     this.assertHost(user, game);
     if (game.status !== 'lobby') {
@@ -880,7 +956,7 @@ export class PlatformStore {
     return game;
   }
 
-  invite(from: PlatformPlayer, game: PlatformGame, username: string, team?: 0 | 1) {
+  invite(from: PlatformPlayer, game: PlatformGame, username: string, team?: 0 | 1 | 2) {
     this.assertHost(from, game);
     if (game.status !== 'lobby') {
       throw new Error('room-started');
@@ -896,7 +972,7 @@ export class PlatformStore {
       (row) => row.gameId === game.id && row.toId === to.id && row.status === 'pending',
     );
     if (pending) {
-      pending.preferredTeam = team === 0 || team === 1 ? team : pending.preferredTeam;
+      pending.preferredTeam = team === 0 || team === 1 || team === 2 ? team : pending.preferredTeam;
       this.save();
       return pending;
     }
@@ -907,7 +983,7 @@ export class PlatformStore {
       toId: to.id,
       status: 'pending',
       createdAt: Date.now(),
-      preferredTeam: team === 0 || team === 1 ? team : null,
+      preferredTeam: team === 0 || team === 1 || team === 2 ? team : null,
     };
     this.invites.push(row);
     this.notify(to.id, 'invite', from.id, `${from.username} invited you to ${game.code}.`, game.id);
@@ -933,7 +1009,7 @@ export class PlatformStore {
         voiceAvailable: false,
         lobbyReady: true,
       };
-    }) as PlatformGame['seats'];
+    });
     game.updatedAt = Date.now();
     this.save();
   }
@@ -1029,9 +1105,7 @@ export class PlatformStore {
       handIndex: match ? match.handIndex + 1 : null,
       currentName: match ? (seats[match.currentSeat]?.name ?? null) : null,
       targetScore: match?.targetScore ?? null,
-      teamScores: match
-        ? { team0: match.scores[0] + match.scores[2], team1: match.scores[1] + match.scores[3] }
-        : null,
+      teamScores: match ? teamScores(match.scores, match.teamOf) : null,
       trick: match?.trick.combination?.type ?? null,
       chatLines: game.chat.length,
       humans,
@@ -1093,7 +1167,7 @@ export class PlatformStore {
       return null;
     }
     const seatIndex = game.seats.findIndex((row) => row.userId === user.id);
-    const seat = (seatIndex >= 0 ? seatIndex : 0) as 0 | 1 | 2 | 3;
+    const seat = (seatIndex >= 0 ? seatIndex : 0) as SeatId;
     const line = { id: randomId('ch'), seat, name: user.username, text: clean, at: Date.now() };
     game.chat = [...game.chat, line].slice(-40);
     this.save();
@@ -1101,11 +1175,14 @@ export class PlatformStore {
   }
 
   recordResult(game: PlatformGame) {
-    if (game.status === 'complete' || !game.match || game.match.phase !== 'matchComplete') {
+    if (!game.match || game.match.phase !== 'matchComplete') {
       return;
     }
-    game.status = 'complete';
-    game.chat = [];
+    tallySeries(game);
+    if (game.statsRecorded) {
+      return;
+    }
+    game.statsRecorded = true;
     const winner = game.match.winner;
     for (const [index, seat] of game.seats.entries()) {
       if (!seat.userId) {
@@ -1116,12 +1193,11 @@ export class PlatformStore {
         continue;
       }
       player.gamesPlayed += 1;
+      const team = game.match.teamOf[index] ?? index % 2;
       const won =
-        winner === 'team0'
-          ? index % 2 === 0
-          : winner === 'team1'
-            ? index % 2 === 1
-            : winner === index;
+        winner === 'team0' || winner === 'team1' || winner === 'team2'
+          ? team === (winner === 'team0' ? 0 : winner === 'team1' ? 1 : 2)
+          : winner === index;
       if (won) {
         player.wins += 1;
         player.teamWins += 1;

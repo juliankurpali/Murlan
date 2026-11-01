@@ -16,5 +16,5 @@ export function appearanceForSeat(
       tone: 0,
     };
   }
-  return { profileUri: null, tone: ((seat - localSeat + 4) % 4) || 1 };
+  return { profileUri: null, tone: ((seat - localSeat + 6) % 6) || 1 };
 }

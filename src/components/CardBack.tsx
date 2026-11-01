@@ -10,14 +10,21 @@ type Props = {
 };
 
 const DIM = {
-  xs: { width: 26, height: 38 },
+  xs: { width: 18, height: 26 },
   sm: { width: 32, height: 46 },
 };
 
 export function CardBack({ size = 'sm', tilt = 0 }: Props) {
   const dim = DIM[size];
   return (
-    <View style={[styles.card, dim, { transform: [{ rotate: `${tilt}deg` }] }]}>
+    <View
+      style={[
+        styles.card,
+        dim,
+        size === 'xs' && styles.cardXs,
+        { transform: [{ rotate: `${tilt}deg` }] },
+      ]}
+    >
       <Image source={CARD_BACK} style={styles.art} resizeMode="cover" />
     </View>
   );
@@ -35,6 +42,14 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 3 },
     elevation: 5,
+  },
+  cardXs: {
+    borderRadius: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOpacity: 0.28,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   art: {
     width: '100%',

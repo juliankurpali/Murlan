@@ -18,6 +18,14 @@ import {
   submitPlay,
 } from './application';
 import {
+  nextBotReactionDelay,
+  pickBotReaction,
+  REACTION_COOLDOWN_MS,
+  REACTION_DURATION_MS,
+  REACTION_VISIBLE_MAX,
+  type ReactionEvent,
+} from './reactions';
+import {
   Card,
   GameState,
   DEFAULT_RULES,
@@ -26,6 +34,7 @@ import {
   isRuleError,
   legalMovesForSeat,
   mathRandomSource,
+  PublicChaosView,
   SeatId,
   toPublicView,
 } from './domain';
@@ -43,6 +52,8 @@ import {
   NetStatus,
   sendChat,
   sendIntent,
+  sendReaction,
+  netId,
   sendLeave,
   sendMute,
   sendSpeaking,
@@ -54,11 +65,20 @@ import {
 } from './online/net';
 import { ChatMessage } from './online/chat';
 import { adminFlagFromLink, clearAdminFromAddressBar, clearJoinFromAddressBar, joinCodeFromLink, shareRoomLink } from './online/joinLink';
-import { botSeatsOf, GameRoom, localSeatOf } from './online/room';
+import { botSeatsOf, GameRoom, localSeatOf, RoomSeat, seatsForMode } from './online/room';
 import * as Linking from 'expo-linking';
 import { t, tError } from './i18n';
 import { isGeneratedUsername, isUsername, normalizeUsername } from './platform/ids';
-import { Friendship, GameSummary, JoinOutcome, MatchHistoryRow, PlatformNotice, PublicPlayer } from './platform/types';
+import {
+  EMPTY_SERIES,
+  Friendship,
+  GameSummary,
+  JoinOutcome,
+  MatchHistoryRow,
+  PlatformNotice,
+  PublicPlayer,
+  TableSeries,
+} from './platform/types';
 import { matchFromView } from './platform/viewMatch';
 import { AdminScreen } from './screens/AdminScreen';
 import { HandResultScreen } from './screens/HandResultScreen';
@@ -103,6 +123,7 @@ import {
   respondFriend,
   setApiToken,
   startGame,
+  setGameMode,
   setLobbyReady,
   inviteToGame,
 } from './social/api';
@@ -128,6 +149,39 @@ type InvitePrompt = {
 
 type RoomResult = GameSummary | JoinOutcome;
 
+function waitingSeatNames(seats: RoomSeat[] | undefined, ready: SeatId[]): string[] {
+  return (seats ?? [])
+    .map((seat, index) => ({ seat, index }))
+    .filter(
+      ({ seat, index }) =>
+        Boolean(seat.ready) && !seat.isBot && !seat.isYou && !ready.includes(index as SeatId),
+    )
+    .map(({ seat }) => seat.name);
+}
+
+function addSeriesWin(series: TableSeries, winner: GameState['winner']): TableSeries {
+  const teamWins = [...series.teamWins];
+  const seatWins = [...series.seatWins];
+  const bumpTeam = (team: number, seats: number[]) => {
+    teamWins[team] = (teamWins[team] ?? 0) + 1;
+    for (const seat of seats) {
+      seatWins[seat] = (seatWins[seat] ?? 0) + 1;
+    }
+  };
+  if (winner === 'team0') {
+    bumpTeam(0, seatWins.length === 6 ? [0, 3] : [0, 2]);
+  } else if (winner === 'team1') {
+    bumpTeam(1, seatWins.length === 6 ? [1, 4] : [1, 3]);
+  } else if (winner === 'team2') {
+    bumpTeam(2, [2, 5]);
+  } else if (typeof winner === 'number') {
+    seatWins[winner] = (seatWins[winner] ?? 0) + 1;
+    const team = seatWins.length === 6 ? winner % 3 : winner % 2;
+    teamWins[team] = (teamWins[team] ?? 0) + 1;
+  }
+  return { matches: series.matches + 1, teamWins, seatWins };
+}
+
 function durationForCurrentTurn(
   match: GameState,
   botSeats: number[],
@@ -148,7 +202,13 @@ export function MatchApp() {
   const [netStatus, setNetStatus] = useState<NetStatus>('idle');
   const [netError, setNetError] = useState<string | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [reactions, setReactions] = useState<ReactionEvent[]>([]);
+  const [reactionCoolUntil, setReactionCoolUntil] = useState(0);
+  const seenReactions = useRef(new Set<string>());
   const [nextHandReady, setNextHandReady] = useState<SeatId[]>([]);
+  const [playAgainReady, setPlayAgainReady] = useState<SeatId[]>([]);
+  const [series, setSeries] = useState<TableSeries>(EMPTY_SERIES);
+  const [chaosView, setChaosView] = useState<PublicChaosView | null>(null);
   const [micStatus, setMicStatus] = useState<MicCaptureStatus>('muted');
   const [me, setMe] = useState<PublicPlayer | null>(null);
   const [friends, setFriends] = useState<PublicPlayer[]>([]);
@@ -170,6 +230,7 @@ export function MatchApp() {
   const seenFriendRequestIds = useRef(new Set<string>());
   const noticesReady = useRef(false);
   const tableGameIdRef = useRef<string | null>(null);
+  const seriesTalliedRef = useRef(false);
   const usernameFlagsRef = useRef({ seenFirst: false, nudgeDismissed: false });
   const startFreshRef = useRef<(factory: () => Promise<RoomResult>) => Promise<void>>(async () => undefined);
   const [linkCode, setLinkCode] = useState<string | null>(null);
@@ -182,6 +243,13 @@ export function MatchApp() {
   const online = Boolean(onlineRoom);
   const canResume = online && matchIsUnfinished(session.match);
   const commitMatch = useCallback((match: GameState) => {
+    if (!tableGameIdRef.current && match.phase === 'matchComplete' && !seriesTalliedRef.current) {
+      seriesTalliedRef.current = true;
+      setSeries((prev) => addSeriesWin(prev, match.winner));
+    }
+    if (match.phase !== 'matchComplete') {
+      seriesTalliedRef.current = false;
+    }
     dispatch({ type: 'setMatch', match });
   }, []);
 
@@ -207,6 +275,9 @@ export function MatchApp() {
     setOnlineRoom(null);
     setNetError(null);
     setChat([]);
+    setReactions([]);
+    setReactionCoolUntil(0);
+    seenReactions.current.clear();
     setNextHandReady([]);
     setMicStatus('muted');
     void clearMatch();
@@ -301,10 +372,12 @@ export function MatchApp() {
         }
       },
       onView: (table) => {
-        if (table.view.phase === 'matchComplete') {
-          setChat([]);
-        }
         setNextHandReady(table.nextHandReady ?? []);
+        setPlayAgainReady(table.playAgainReady ?? []);
+        if (table.series) {
+          setSeries(table.series);
+        }
+        setChaosView(table.chaos ?? null);
         commitMatch(matchFromView(table.view));
         const restoring = restoreRef.current;
         const parked =
@@ -315,9 +388,6 @@ export function MatchApp() {
             screenRef.current === 'social' ||
             screenRef.current === 'profile');
         if (parked) {
-          if (table.view.phase === 'matchComplete') {
-            detachFromTable();
-          }
           return;
         }
         restoreRef.current = false;
@@ -336,6 +406,26 @@ export function MatchApp() {
       onVoice: (frame) => playSeatVoice(frame),
       onChat: (message) => setChat((prev) => [...prev, message].slice(-40)),
       onChatHistory: setChat,
+      onReaction: (event) => {
+        if (seenReactions.current.has(event.eventId)) {
+          return;
+        }
+        if (Date.now() - event.serverTimestamp > REACTION_DURATION_MS + 400) {
+          return;
+        }
+        seenReactions.current.add(event.eventId);
+        setReactions((prev) => [...prev, event].slice(-REACTION_VISIBLE_MAX));
+        if (event.senderPlayerId === netId()) {
+          setReactionCoolUntil(event.serverTimestamp + REACTION_COOLDOWN_MS);
+        }
+        setTimeout(() => {
+          seenReactions.current.delete(event.eventId);
+          setReactions((prev) => prev.filter((row) => row.eventId !== event.eventId));
+        }, REACTION_DURATION_MS);
+      },
+      onReactionDenied: () => {
+        /* display-only: invalid sends are dropped, nothing is stored */
+      },
     });
     return () => bindNet({});
   }, [commitMatch, detachFromTable]);
@@ -575,6 +665,9 @@ export function MatchApp() {
   const leaveTable = () => {
     if (!onlineRoom) {
       void clearMatch();
+      setSeries(EMPTY_SERIES);
+      setPlayAgainReady([]);
+      seriesTalliedRef.current = false;
       dispatch({ type: 'setMatch', match: null });
       dispatch({ type: 'navigate', screen: 'home' });
       return;
@@ -643,6 +736,69 @@ export function MatchApp() {
     };
   }, [turnKey, commitMatch, online, botSeats, localSeat]);
 
+  const botReactLive =
+    !online &&
+    session.screen === 'table' &&
+    Boolean(session.match) &&
+    (session.match?.phase === 'playing' || session.match?.phase === 'exchanging') &&
+    botSeats.length > 0;
+  const botSeatKey = botSeats.join('.');
+  const tableSeatCount = session.match?.hands.length ?? 4;
+  useEffect(() => {
+    if (!botReactLive) {
+      return;
+    }
+    const bots = botSeatKey.split('.').map((value) => Number(value)).filter((value) => Number.isInteger(value));
+    let handle: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    const arm = () => {
+      handle = setTimeout(() => {
+        if (cancelled) {
+          return;
+        }
+        const occupants = Array.from({ length: tableSeatCount }, (_, index) => ({
+          id: bots.includes(index) ? `bot:local:${index}` : index === localSeat ? 'local' : `seat:${index}`,
+          seat: index,
+        }));
+        const pick = pickBotReaction(
+          occupants,
+          bots.map((seat) => `bot:local:${seat}`),
+        );
+        if (pick) {
+          const sender = occupants.find((row) => row.id === pick.senderId);
+          const target = occupants.find((row) => row.id === pick.targetPlayerId);
+          const event: ReactionEvent = {
+            eventId: `bot-${Date.now()}-${pick.requestId}`,
+            roomId: 'local',
+            senderPlayerId: pick.senderId,
+            senderSeat: sender?.seat,
+            targetPlayerId: pick.targetPlayerId,
+            targetSeat: target?.seat,
+            reactionId: pick.reactionId,
+            requestId: pick.requestId,
+            serverTimestamp: Date.now(),
+          };
+          if (!seenReactions.current.has(event.eventId)) {
+            seenReactions.current.add(event.eventId);
+            setReactions((prev) => [...prev, event].slice(-REACTION_VISIBLE_MAX));
+            setTimeout(() => {
+              seenReactions.current.delete(event.eventId);
+              setReactions((prev) => prev.filter((row) => row.eventId !== event.eventId));
+            }, REACTION_DURATION_MS);
+          }
+        }
+        arm();
+      }, nextBotReactionDelay());
+    };
+    arm();
+    return () => {
+      cancelled = true;
+      if (handle) {
+        clearTimeout(handle);
+      }
+    };
+  }, [botReactLive, botSeatKey, localSeat, tableSeatCount]);
+
   const view = session.match ? toPublicView(session.match, localSeat) : null;
   const exchanging = session.match?.phase === 'exchanging';
   const legalMoves = useMemo(
@@ -678,6 +834,9 @@ export function MatchApp() {
     const match = startMatch();
     dispatch({ type: 'setSettings', settings: { language } });
     void saveSettings({ ...session.settings, language });
+    setSeries(EMPTY_SERIES);
+    setPlayAgainReady([]);
+    seriesTalliedRef.current = false;
     commitMatch(match);
     dispatch({ type: 'navigate', screen: 'table' });
     void feel('deal');
@@ -778,19 +937,21 @@ export function MatchApp() {
 
   const language = session.settings.language;
   const youReadyForNext = nextHandReady.includes(localSeat);
+  const youReadyToPlayAgain = playAgainReady.includes(localSeat);
   const waitingForNextHand = useMemo(() => {
     if (!view || view.phase !== 'handComplete' || !youReadyForNext) {
       return null;
     }
-    const names = (onlineRoom?.seats ?? [])
-      .map((seat, index) => ({ seat, index }))
-      .filter(
-        ({ seat, index }) =>
-          seat.ready && !seat.isBot && !seat.isYou && !nextHandReady.includes(index as SeatId),
-      )
-      .map(({ seat }) => seat.name);
+    const names = waitingSeatNames(onlineRoom?.seats, nextHandReady);
     return names.length > 0 ? t(language, 'waitingNextHand', { names: names.join(', ') }) : t(language, 'youAreReady');
   }, [view, youReadyForNext, onlineRoom, nextHandReady, language]);
+  const waitingForPlayAgain = useMemo(() => {
+    if (!view || view.phase !== 'matchComplete' || !youReadyToPlayAgain) {
+      return null;
+    }
+    const names = waitingSeatNames(onlineRoom?.seats, playAgainReady);
+    return names.length > 0 ? t(language, 'waitingPlayAgain', { names: names.join(', ') }) : t(language, 'youAreReady');
+  }, [view, youReadyToPlayAgain, onlineRoom, playAgainReady, language]);
   const rules = session.match?.rules ?? DEFAULT_RULES;
   const onMicStatus = useCallback((status: MicCaptureStatus) => {
     setMicStatus(status);
@@ -962,6 +1123,20 @@ export function MatchApp() {
             settingsFromTable.current = true;
             dispatch({ type: 'navigate', screen: 'settings' });
           }}
+          handSize={session.settings.handSize}
+          onHandSize={(size) => changeSettings({ handSize: size })}
+          fullscreenLabel={fullscreenLabel}
+          fullscreenActive={fullScreenOn && fullscreenKind() !== 'home-screen'}
+          onFullscreen={showFullscreen ? goFullscreen : undefined}
+          chaos={chaosView}
+          reactions={reactions}
+          reactionCoolUntil={online ? reactionCoolUntil : 0}
+          onSendReaction={online ? sendReaction : undefined}
+          onActivateAbility={
+            online
+              ? (payload) => sendIntent('ability', payload)
+              : undefined
+          }
         />
       ) : (
         <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
@@ -1070,9 +1245,30 @@ export function MatchApp() {
                   void fillGameBots(onlineRoom.id);
                 }
               }}
+              onSetMode={(mode) => {
+                if (!onlineRoom?.id || mode === 'chaos') {
+                  return;
+                }
+                setOnlineRoom({
+                  ...onlineRoom,
+                  mode,
+                  seats: seatsForMode(mode, onlineRoom.seats),
+                });
+                void setGameMode(onlineRoom.id, mode)
+                  .then((game) => {
+                    setOnlineRoom((current) =>
+                      current && current.id === game.id
+                        ? { ...current, mode: game.mode, seats: seatsForMode(game.mode, current.seats) }
+                        : current,
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    Alert.alert(t(language, 'mode'), tError(language, error));
+                  });
+              }}
               onStart={() => {
                 if (onlineRoom?.id) {
-                  void startGame(onlineRoom.id).catch((error: unknown) =>
+                  void startGame(onlineRoom.id, onlineRoom.mode).catch((error: unknown) =>
                     Alert.alert(t(language, 'start'), tError(language, error)),
                   );
                 }
@@ -1160,16 +1356,29 @@ export function MatchApp() {
               }}
               onNextHand={dealNext}
               nextHandReady={youReadyForNext}
-              waitingFor={waitingForNextHand}
+              waitingFor={view.phase === 'matchComplete' ? waitingForPlayAgain : waitingForNextHand}
               roomSeats={tableSeats}
               onToggleMute={toggleMute}
+              specialVictorySeat={chaosView?.specialVictorySeat ?? null}
+              chaosActive={Boolean(chaosView)}
+              chaosAbilityId={chaosView?.own?.abilityId ?? null}
+              playAgainReady={youReadyToPlayAgain}
+              series={series}
               onMenu={leaveTable}
               onPlayAgain={() => {
                 if (online) {
-                  leaveTable();
+                  if (!youReadyToPlayAgain) {
+                    setPlayAgainReady((prev) => [...prev, localSeat]);
+                    sendIntent('playAgain');
+                  }
                   return;
                 }
-                dispatch({ type: 'navigate', screen: 'setup' });
+                const match = startMatch();
+                setPlayAgainReady([]);
+                seriesTalliedRef.current = false;
+                commitMatch(match);
+                dispatch({ type: 'navigate', screen: 'table' });
+                void feel('deal');
               }}
             />
           ) : null}
@@ -1227,7 +1436,7 @@ export function MatchApp() {
         onSpeaking={sendSpeaking}
         onStatus={onMicStatus}
       />
-      {showFullscreen && fullscreenLabel ? (
+      {showFullscreen && fullscreenLabel && session.screen !== 'table' ? (
         <FullscreenMark
           label={fullscreenLabel}
           active={fullScreenOn && fullscreenKind() !== 'home-screen'}

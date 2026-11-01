@@ -39,6 +39,7 @@ describe('relay room mapping', () => {
     expect(room.host).toBe(false);
     expect(room.seats[0]?.isYou).toBe(false);
     expect(room.seats[1]?.isYou).toBe(true);
+    expect(room.seats[1]?.playerId).toBe('guest');
     expect(room.seats[1]?.speaking).toBe(true);
     expect(room.seats[2]?.ready).toBe(false);
   });

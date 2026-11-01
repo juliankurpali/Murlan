@@ -1,17 +1,19 @@
-import { createDeck } from '../cards/deck';
+import { createDeck, createSuperDeck, validateSuperDeck } from '../cards/deck';
 import { RandomSource } from '../cards/random';
 import { shuffleDeck } from '../cards/shuffle';
-import { Card, THREE_OF_SPADES_ID } from '../cards/types';
-import { mergeRules } from '../rules/defaults';
+import { Card, isThreeOfSpades } from '../cards/types';
+import { mergeRules, SUPER_RULES } from '../rules/defaults';
 import { RulesConfig } from '../rules/types';
 import { canBeat, describeCannotBeat } from './beating';
 import { combinationLabel, detectCombination } from './combinations';
-import { dealCards, dealerForHand } from './deal';
+import { cloneHands, dealCards, dealLimited, dealerForHand } from './deal';
+import { limitStraightLength, spiceDeck } from './spiceDeal';
 import { applyCardExchange, defaultReturnCard, finishCardExchange, lastPlaceSeat } from './exchange';
 import { ruleError } from './errors';
 import { getLegalMoves } from './legalMoves';
+import { defaultTeamOf, playerCountFor, SUPER_MURLAN } from './mode';
 import { lockedMatchWinner, remainingFinishOrder, scoreHand } from './scoring';
-import { nextSeat, nextUnfinishedSeat, unfinishedSeats } from './seats';
+import { nextSeat, nextUnfinishedSeat, seatCountOf, unfinishedSeats } from './seats';
 import {
   GameState,
   isCombination,
@@ -19,7 +21,6 @@ import {
   PublicPlayEvent,
   RuleError,
   SeatId,
-  SEATS,
 } from './types';
 
 export type CreateGameInput = {
@@ -28,14 +29,10 @@ export type CreateGameInput = {
   random: RandomSource;
 };
 
-function cloneHands(hands: GameState['hands']): GameState['hands'] {
-  return [hands[0].slice(), hands[1].slice(), hands[2].slice(), hands[3].slice()];
-}
-
-function findCardSeat(hands: GameState['hands'], cardId: string): SeatId | null {
-  for (const seat of SEATS) {
-    if (hands[seat].some((card) => card.id === cardId)) {
-      return seat;
+function findThreeOfSpadesSeat(hands: GameState['hands']): SeatId | null {
+  for (let seat = 0; seat < hands.length; seat += 1) {
+    if (hands[seat]?.some(isThreeOfSpades)) {
+      return seat as SeatId;
     }
   }
   return null;
@@ -43,12 +40,12 @@ function findCardSeat(hands: GameState['hands'], cardId: string): SeatId | null 
 
 function openingSeat(hands: GameState['hands'], rules: RulesConfig, dealerSeat: SeatId): SeatId {
   if (rules.firstLeadMustContainThreeOfSpades) {
-    const holder = findCardSeat(hands, THREE_OF_SPADES_ID);
+    const holder = findThreeOfSpadesSeat(hands);
     if (holder !== null) {
       return holder;
     }
   }
-  return nextSeat(dealerSeat);
+  return nextSeat(dealerSeat, hands.length);
 }
 
 function emptyTrick(leaderSeat: SeatId): GameState['trick'] {
@@ -66,16 +63,43 @@ function dealNewHand(
   random: RandomSource,
   previousFinishOrder: SeatId[],
   awaitReturnChoice: boolean,
+  mode: MatchMode,
 ): Pick<
   GameState,
-  'dealerSeat' | 'hands' | 'currentSeat' | 'trick' | 'lastExchange' | 'pendingExchange' | 'phase'
+  'dealerSeat' | 'hands' | 'undealt' | 'currentSeat' | 'trick' | 'lastExchange' | 'pendingExchange' | 'phase'
 > {
-  const dealerSeat = dealerForHand(handIndex);
-  const shuffled = shuffleDeck(createDeck(), random);
-  const dealt = dealCards(shuffled, dealerSeat);
+  const seatCount = playerCountFor(mode);
+  const dealerSeat = dealerForHand(handIndex, seatCount);
+  const raw =
+    mode === 'super' ? shuffleDeck(createSuperDeck(random), random) : shuffleDeck(createDeck(), random);
+  if (mode === 'super') {
+    validateSuperDeck(raw);
+  }
+  const dealtCount =
+    mode === 'super' ? seatCount * SUPER_MURLAN.cardsPerPlayer : raw.length;
+  const shuffled = spiceDeck({
+    deck: raw,
+    dealerSeat,
+    seatCount,
+    dealtCount,
+    random,
+    teamOf: defaultTeamOf(mode),
+  });
+  const packed =
+    mode === 'super'
+      ? dealLimited(shuffled, dealerSeat, seatCount, SUPER_MURLAN.cardsPerPlayer)
+      : { hands: dealCards(shuffled, dealerSeat, seatCount), undealt: [] as Card[] };
+  if (
+    mode !== 'super' &&
+    packed.hands.some((hand) => hand.length > 14 || hand.length < 13)
+  ) {
+    packed.hands = dealCards(raw, dealerSeat, seatCount);
+    packed.undealt = [];
+  }
+  packed.hands = limitStraightLength(packed.hands, 6, random);
   const firstSeat = previousFinishOrder[0] ?? null;
-  const lastSeat = lastPlaceSeat(previousFinishOrder);
-  const exchanged = applyCardExchange(dealt, {
+  const lastSeat = lastPlaceSeat(previousFinishOrder, seatCount);
+  const exchanged = applyCardExchange(packed.hands, {
     enabled: rules.cardExchangeEnabled && handIndex > 0,
     firstSeat,
     lastSeat,
@@ -96,12 +120,13 @@ function dealNewHand(
   } else if (rules.laterHandOpener === 'previousFirstFinisher' && firstSeat !== null) {
     leader = firstSeat;
   } else {
-    leader = nextSeat(dealerSeat);
+    leader = nextSeat(dealerSeat, seatCount);
   }
 
   return {
     dealerSeat,
     hands: exchanged.hands,
+    undealt: packed.undealt,
     currentSeat: leader,
     trick: emptyTrick(leader),
     lastExchange: exchanged.exchange,
@@ -110,20 +135,31 @@ function dealNewHand(
   };
 }
 
+function resolveMode(mode?: MatchMode): MatchMode {
+  if (mode === 'chaos' || mode === 'super') {
+    return mode;
+  }
+  return '2v2';
+}
+
 export function createGame(input: CreateGameInput): GameState {
-  const rules = mergeRules(input.rules);
-  const dealt = dealNewHand(0, rules, input.random, [], false);
+  const mode = resolveMode(input.mode);
+  const rules = mergeRules(mode === 'super' ? { ...SUPER_RULES, ...input.rules } : input.rules);
+  const dealt = dealNewHand(0, rules, input.random, [], false, mode);
+  const seatCount = dealt.hands.length;
   return {
     schemaVersion: 1,
-    mode: '2v2',
+    mode,
     rules,
     handIndex: 0,
     dealerSeat: dealt.dealerSeat,
     hands: dealt.hands,
+    teamOf: defaultTeamOf(mode),
+    undealt: dealt.undealt,
     currentSeat: dealt.currentSeat,
     trick: dealt.trick,
     finishOrder: [],
-    scores: [0, 0, 0, 0],
+    scores: Array.from({ length: seatCount }, () => 0),
     targetScore: rules.targetScore,
     phase: 'playing',
     history: [],
@@ -166,15 +202,32 @@ function mustIncludeThreeOfSpades(state: GameState): boolean {
 }
 
 export function legalMovesForSeat(state: GameState, seat: SeatId): Card[][] {
-  return getLegalMoves(state.hands[seat], state.trick, state.rules, {
-    mustIncludeCardId: mustIncludeThreeOfSpades(state) ? THREE_OF_SPADES_ID : undefined,
+  return getLegalMoves(state.hands[seat] ?? [], state.trick, state.rules, {
+    mustIncludeThreeOfSpades: mustIncludeThreeOfSpades(state),
   });
 }
 
 function completeHandIfNeeded(state: GameState): GameState {
   const locked = lockedMatchWinner(state);
-  if (state.finishOrder.length < 3 && locked === null) {
+  const needed = seatCountOf(state) - 1;
+  if (state.finishOrder.length < needed && locked === null) {
     return state;
+  }
+  const remaining = remainingFinishOrder(state);
+  const last = remaining[remaining.length - 1];
+  if (
+    last !== undefined &&
+    last === state.extraTurnSeat &&
+    !state.extraTurnUsed &&
+    state.hands[last].length > 0
+  ) {
+    return {
+      ...state,
+      extraTurnUsed: true,
+      currentSeat: last,
+      trick: emptyTrick(last),
+      phase: 'playing',
+    };
   }
   const finishOrder = [...state.finishOrder, ...remainingFinishOrder(state)];
   const scored = scoreHand({ ...state, finishOrder }, state.rules);
@@ -190,14 +243,16 @@ function completeHandIfNeeded(state: GameState): GameState {
 }
 
 function allOtherActivePassed(state: GameState, lastSuccessful: SeatId): boolean {
-  const active = unfinishedSeats(state.finishOrder);
+  const active = unfinishedSeats(state.finishOrder, seatCountOf(state));
   const others = active.filter((seat) => seat !== lastSuccessful);
   return others.every((seat) => state.trick.passedSinceLastPlay.includes(seat));
 }
 
 function closeTrick(state: GameState, winner: SeatId): GameState {
   const leader =
-    state.hands[winner].length > 0 ? winner : nextUnfinishedSeat(winner, state.finishOrder);
+    state.hands[winner].length > 0
+      ? winner
+      : nextUnfinishedSeat(winner, state.finishOrder, seatCountOf(state));
   if (leader === null) {
     return completeHandIfNeeded(state);
   }
@@ -211,7 +266,7 @@ function closeTrick(state: GameState, winner: SeatId): GameState {
 }
 
 function advanceAfterAction(state: GameState): GameState {
-  const next = nextUnfinishedSeat(state.currentSeat, state.finishOrder);
+  const next = nextUnfinishedSeat(state.currentSeat, state.finishOrder, seatCountOf(state));
   if (next === null) {
     return completeHandIfNeeded(state);
   }
@@ -250,7 +305,7 @@ export function applyPlay(
     return ruleError('invalidCombination', detected.reason);
   }
 
-  if (mustIncludeThreeOfSpades(state) && !cards.some((card) => card.id === THREE_OF_SPADES_ID)) {
+  if (mustIncludeThreeOfSpades(state) && !cards.some(isThreeOfSpades)) {
     return ruleError('mustIncludeThreeOfSpades', 'The first play of the match must include 3♠.');
   }
 
@@ -265,7 +320,7 @@ export function applyPlay(
 
   const history: PublicPlayEvent[] = [
     ...state.history,
-    { kind: 'play', seat: playerId, cards, combination: detected },
+    { kind: 'play', seat: playerId, cards: detected.cards, combination: detected },
   ];
 
   let nextState: GameState = {
@@ -294,7 +349,16 @@ export function applyPlay(
     }
   }
 
-  return advanceAfterAction(nextState);
+  const advanced = advanceAfterAction(nextState);
+  if (
+    Boolean(state.extraTurnUsed) &&
+    advanced.extraTurnUsed &&
+    advanced.finishOrder.length >= seatCountOf(advanced) - 1 &&
+    advanced.phase === 'playing'
+  ) {
+    return completeHandIfNeeded(advanced);
+  }
+  return advanced;
 }
 
 export function applyPass(
@@ -334,8 +398,8 @@ export function applyPass(
   if (!rules.allowReentryAfterPass) {
     const skip = new Set(passedSinceLastPlay);
     let seat = playerId;
-    for (let i = 0; i < 4; i += 1) {
-      const candidate = nextUnfinishedSeat(seat, nextState.finishOrder);
+    for (let i = 0; i < seatCountOf(nextState); i += 1) {
+      const candidate = nextUnfinishedSeat(seat, nextState.finishOrder, seatCountOf(nextState));
       if (candidate === null) {
         break;
       }
@@ -346,7 +410,16 @@ export function applyPass(
     }
   }
 
-  return advanceAfterAction(nextState);
+  const advanced = advanceAfterAction(nextState);
+  if (
+    Boolean(state.extraTurnUsed) &&
+    advanced.extraTurnUsed &&
+    advanced.finishOrder.length >= seatCountOf(advanced) - 1 &&
+    advanced.phase === 'playing'
+  ) {
+    return completeHandIfNeeded(advanced);
+  }
+  return advanced;
 }
 
 export function startNextHand(
@@ -363,7 +436,14 @@ export function startNextHand(
   }
 
   const nextIndex = state.handIndex + 1;
-  const dealt = dealNewHand(nextIndex, rules, random, state.finishOrder, Boolean(options.awaitReturnChoice));
+  const dealt = dealNewHand(
+    nextIndex,
+    rules,
+    random,
+    state.finishOrder,
+    Boolean(options.awaitReturnChoice),
+    state.mode,
+  );
 
   return {
     ...state,
@@ -371,6 +451,7 @@ export function startNextHand(
     handIndex: nextIndex,
     dealerSeat: dealt.dealerSeat,
     hands: dealt.hands,
+    undealt: dealt.undealt,
     currentSeat: dealt.currentSeat,
     trick: dealt.trick,
     finishOrder: [],
@@ -464,7 +545,7 @@ export function explainSelection(state: GameState, seat: SeatId, cards: Card[]):
   if (!isCombination(detected)) {
     return detected.reason;
   }
-  if (mustIncludeThreeOfSpades(state) && !cards.some((card) => card.id === THREE_OF_SPADES_ID)) {
+  if (mustIncludeThreeOfSpades(state) && !cards.some(isThreeOfSpades)) {
     return 'The first play of the match must include 3♠.';
   }
   const current = state.trick.combination;

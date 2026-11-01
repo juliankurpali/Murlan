@@ -11,9 +11,10 @@ type Props = {
   localSeat?: SeatId;
   label: string;
   tableSize: TableSize | null;
+  seatCount?: number;
 };
 
-export function PassBurst({ burstKey, seat, localSeat = 0, tableSize }: Props) {
+export function PassBurst({ burstKey, seat, localSeat = 0, tableSize, seatCount = 4 }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(18)).current;
   const scale = useRef(new Animated.Value(0.7)).current;
@@ -60,7 +61,7 @@ export function PassBurst({ burstKey, seat, localSeat = 0, tableSize }: Props) {
   if (!tableSize) {
     return null;
   }
-  const point = visualSeatPoint(seat, localSeat, tableSize);
+  const point = visualSeatPoint(seat, localSeat, tableSize, seatCount);
 
   if (Platform.OS === 'web') {
     return (

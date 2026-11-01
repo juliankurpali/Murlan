@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Language } from '../application/types';
 import { ChatMessage } from '../online/chat';
-import { GameRoom, guestsAreReady, isRoomCode, localSeatOf, RoomSeat, roomIsReady, waitingReadyNames } from '../online/room';
+import { emptyRoomSeat, GameRoom, guestsAreReady, isRoomCode, localSeatOf, normalizeRoomCode, RoomSeat, roomIsReady, seatsForMode, waitingReadyNames } from '../online/room';
 import { NetStatus } from '../online/net';
+import { MatchMode } from '../domain';
 import { PublicPlayer } from '../platform/types';
+import { ChaosBook } from '../components/ChaosBook';
+import { SuperBook } from '../components/SuperBook';
 import { ChatPanel } from '../components/ChatPanel';
 import { KeyboardField } from '../components/KeyboardField';
 import { LandscapeFrame, LandscapePane } from '../components/LandscapeFrame';
@@ -23,11 +26,12 @@ type Props = {
   onJoin: (code: string) => void;
   onFillBots: () => void;
   onStart: () => void;
+  onSetMode?: (mode: MatchMode) => void;
   onLeave: () => void;
   chat: ChatMessage[];
   onSendChat: (text: string) => void;
   friends?: PublicPlayer[];
-  onInvite?: (username: string, team?: 0 | 1) => void;
+  onInvite?: (username: string, team?: 0 | 1 | 2) => void;
   onClaimSeat?: (seat: number) => void;
   onAddFriend?: (username: string) => void;
   onShare?: () => void;
@@ -71,6 +75,7 @@ export function LobbyScreen({
   onJoin,
   onFillBots,
   onStart,
+  onSetMode,
   onLeave,
   chat,
   onSendChat,
@@ -84,9 +89,10 @@ export function LobbyScreen({
   onToggleMute,
 }: Props) {
   const [code, setCode] = useState('');
+  const [bookOpen, setBookOpen] = useState(false);
 
   const join = () => {
-    const next = code.trim().toUpperCase();
+    const next = normalizeRoomCode(code);
     if (!isRoomCode(next)) {
       Alert.alert(t(language, 'joinRoom'), t(language, 'roomCodeHint'));
       return;
@@ -113,7 +119,7 @@ export function LobbyScreen({
               placeholder="A7K2"
               placeholderTextColor={colors.muted}
               value={code}
-              onChangeText={setCode}
+              onChangeText={(value) => setCode(normalizeRoomCode(value))}
               onSubmitEditing={join}
               label={t(language, 'joinRoom')}
               doneLabel={t(language, 'ok')}
@@ -130,12 +136,34 @@ export function LobbyScreen({
   const waiting = waitingReadyNames(room);
   const canStart = roomIsReady(room) && guestsAreReady(room);
 
+  const bookKind = room.mode === 'chaos' ? 'chaos' : room.mode === 'super' ? 'super' : null;
+  const book = (
+    <>
+      <ChaosBook language={language} visible={bookOpen && bookKind === 'chaos'} onClose={() => setBookOpen(false)} />
+      <SuperBook language={language} visible={bookOpen && bookKind === 'super'} onClose={() => setBookOpen(false)} />
+    </>
+  );
+
   if (!room.host) {
     return (
+      <>
       <LandscapeFrame title={t(language, 'room')} backLabel={t(language, 'back')} onBack={onLeave}>
         <LandscapePane>
           <ScrollView contentContainerStyle={styles.roomMeta} keyboardShouldPersistTaps="handled">
             <Text style={styles.code}>{room.code}</Text>
+            <Text style={styles.body}>
+              {t(
+                language,
+                room.mode === 'chaos' ? 'chaosMode' : room.mode === 'super' ? 'modeSuper' : 'chaosClassic',
+              )}
+            </Text>
+            {bookKind ? (
+              <UiButton
+                label={t(language, bookKind === 'chaos' ? 'chaosBookTitle' : 'superBookTitle')}
+                variant="secondary"
+                onPress={() => setBookOpen(true)}
+              />
+            ) : null}
             <UiButton
               label={you?.lobbyReady ? t(language, 'notReady') : t(language, 'ready')}
               variant={you?.lobbyReady ? 'secondary' : 'primary'}
@@ -164,10 +192,13 @@ export function LobbyScreen({
           </View>
         </LandscapePane>
       </LandscapeFrame>
+      {book}
+      </>
     );
   }
 
   return (
+    <>
     <LandscapeFrame title={t(language, 'room')} backLabel={t(language, 'back')} onBack={onLeave}>
       <LandscapePane>
         <ScrollView contentContainerStyle={styles.roomMeta} keyboardShouldPersistTaps="handled">
@@ -200,6 +231,41 @@ export function LobbyScreen({
           {waiting.length > 0 ? (
             <Text style={styles.body}>{t(language, 'waitingToReady', { names: waiting.join(', ') })}</Text>
           ) : null}
+          <View style={styles.modeRow}>
+            <UiButton
+              label={t(language, 'chaosClassic')}
+              variant={room.mode === '2v2' ? 'primary' : 'secondary'}
+              onPress={() => onSetMode?.('2v2')}
+              style={styles.modeBtn}
+            />
+            <UiButton
+              label={t(language, 'modeSuper')}
+              variant={room.mode === 'super' ? 'primary' : 'secondary'}
+              onPress={() => onSetMode?.('super')}
+              style={styles.modeBtn}
+            />
+            <UiButton
+              label={t(language, 'chaosMode')}
+              variant="secondary"
+              disabled
+              accessibilityHint={t(language, 'chaosComingSoon')}
+              onPress={() => undefined}
+              style={styles.modeBtn}
+            />
+          </View>
+          <Text style={styles.body}>
+            {t(
+              language,
+              room.mode === 'chaos' ? 'chaosModeHint' : room.mode === 'super' ? 'modeSuperHint' : 'chaosClassicHint',
+            )}
+          </Text>
+          {bookKind ? (
+            <UiButton
+              label={t(language, bookKind === 'chaos' ? 'chaosBookTitle' : 'superBookTitle')}
+              variant="ghost"
+              onPress={() => setBookOpen(true)}
+            />
+          ) : null}
           <View style={styles.roomActions}>
             {onToggleMute && you?.ready && !you.isBot ? (
               <UiButton
@@ -229,25 +295,27 @@ export function LobbyScreen({
             <View style={styles.roomActions}>
               <Text style={styles.body}>{t(language, 'inviteFriend')}</Text>
               {friends.slice(0, 4).map((friend) => {
-                const myTeam = (localSeatOf(room) % 2) as 0 | 1;
-                const oppTeam = myTeam === 0 ? 1 : 0;
+                const superTable = room.mode === 'super';
+                const myTeam = (localSeatOf(room) % (superTable ? 3 : 2)) as 0 | 1 | 2;
+                const inviteTeams = superTable ? ([0, 1, 2] as const) : ([0, 1] as const);
                 return (
                   <View key={friend.id} style={styles.inviteRow}>
                     <Text style={styles.inviteName} numberOfLines={1}>
                       {friend.username}
                     </Text>
-                    <UiButton
-                      label={t(language, 'inviteTeam')}
-                      variant="ghost"
-                      onPress={() => onInvite(friend.username, myTeam)}
-                      style={styles.inviteBtn}
-                    />
-                    <UiButton
-                      label={t(language, 'inviteOpp')}
-                      variant="ghost"
-                      onPress={() => onInvite(friend.username, oppTeam)}
-                      style={styles.inviteBtn}
-                    />
+                    {inviteTeams.map((team) => (
+                      <UiButton
+                        key={team}
+                        label={
+                          superTable
+                            ? t(language, team === 0 ? 'team1' : team === 1 ? 'team2' : 'team3')
+                            : t(language, team === myTeam ? 'inviteTeam' : 'inviteOpp')
+                        }
+                        variant="ghost"
+                        onPress={() => onInvite(friend.username, team)}
+                        style={styles.inviteBtn}
+                      />
+                    ))}
                   </View>
                 );
               })}
@@ -275,6 +343,8 @@ export function LobbyScreen({
         </View>
       </LandscapePane>
     </LandscapeFrame>
+    {book}
+    </>
   );
 }
 
@@ -293,26 +363,22 @@ function RoomSeats({
   onAddFriend?: (username: string) => void;
   onToggleMute?: () => void;
 }) {
+  const seated = { ...room, seats: seatsForMode(room.mode, room.seats) };
+  const teams = seated.mode === 'super' ? ([0, 1, 2] as const) : ([0, 1] as const);
   return (
     <View style={styles.teams}>
-      <TeamColumn
-        language={language}
-        room={room}
-        team={0}
-        friends={friends}
-        onClaimSeat={onClaimSeat}
-        onAddFriend={onAddFriend}
-        onToggleMute={onToggleMute}
-      />
-      <TeamColumn
-        language={language}
-        room={room}
-        team={1}
-        friends={friends}
-        onClaimSeat={onClaimSeat}
-        onAddFriend={onAddFriend}
-        onToggleMute={onToggleMute}
-      />
+      {teams.map((team) => (
+        <TeamColumn
+          key={team}
+          language={language}
+          room={seated}
+          team={team}
+          friends={friends}
+          onClaimSeat={onClaimSeat}
+          onAddFriend={onAddFriend}
+          onToggleMute={onToggleMute}
+        />
+      ))}
     </View>
   );
 }
@@ -350,35 +416,55 @@ function TeamColumn({
 }: {
   language: Language;
   room: GameRoom;
-  team: 0 | 1;
+  team: 0 | 1 | 2;
   friends: PublicPlayer[];
   onClaimSeat?: (seat: number) => void;
   onAddFriend?: (username: string) => void;
   onToggleMute?: () => void;
 }) {
-  const youTeam = (localSeatOf(room) % 2) as 0 | 1;
-  const indexes = team === 0 ? [0, 2] : [1, 3];
+  const superTable = room.mode === 'super';
+  const youTeam = (localSeatOf(room) % (superTable ? 3 : 2)) as 0 | 1 | 2;
+  const indexes = superTable
+    ? team === 0
+      ? [0, 3]
+      : team === 1
+        ? [1, 4]
+        : [2, 5]
+    : team === 0
+      ? [0, 2]
+      : [1, 3];
   return (
-    <View style={[styles.teamCol, team === 1 && styles.teamColOpp]}>
-      <Text style={[styles.teamTitle, team === 1 && styles.teamTitleOpp]}>
-        {t(language, team === 0 ? 'team1' : 'team2')}
+    <View style={[styles.teamCol, team === 1 && styles.teamColOpp, team === 2 && styles.teamColThird]}>
+      <Text
+        style={[
+          styles.teamTitle,
+          team === 1 && styles.teamTitleOpp,
+          team === 2 && styles.teamTitleThird,
+        ]}
+      >
+        {t(language, team === 0 ? 'team1' : team === 1 ? 'team2' : 'team3')}
         {youTeam === team ? ` · ${t(language, 'yourTeam')}` : ''}
       </Text>
-      {indexes.map((index) => (
-        <SeatCard
-          key={index}
-          language={language}
-          seat={room.seats[index]!}
-          index={index}
-          started={room.started}
-          friends={friends}
-          stacked
-          partner={!room.seats[index]?.isYou && localSeatOf(room) % 2 === index % 2}
-          onClaimSeat={onClaimSeat}
-          onAddFriend={onAddFriend}
-          onToggleMute={onToggleMute}
-        />
-      ))}
+      {indexes.map((index) => {
+        const seat = room.seats[index] ?? emptyRoomSeat();
+        return (
+          <SeatCard
+            key={index}
+            language={language}
+            seat={seat}
+            index={index}
+            started={room.started}
+            friends={friends}
+            stacked
+            partner={
+              !seat.isYou && localSeatOf(room) % (superTable ? 3 : 2) === index % (superTable ? 3 : 2)
+            }
+            onClaimSeat={onClaimSeat}
+            onAddFriend={onAddFriend}
+            onToggleMute={onToggleMute}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -396,7 +482,7 @@ function SeatCard({
   onToggleMute,
 }: {
   language: Language;
-  seat: RoomSeat;
+  seat?: RoomSeat | null;
   index: number;
   started: boolean;
   stacked?: boolean;
@@ -406,21 +492,22 @@ function SeatCard({
   onAddFriend?: (username: string) => void;
   onToggleMute?: () => void;
 }) {
-  const vacant = !seat.ready || seat.isBot;
-  const occupiedHuman = Boolean(onClaimSeat) && !started && seat.ready && !seat.isBot && !seat.isYou;
-  const open = !started && Boolean(onClaimSeat) && !seat.isYou;
+  const occupant = seat ?? emptyRoomSeat();
+  const vacant = !occupant.ready || occupant.isBot;
+  const occupiedHuman = Boolean(onClaimSeat) && !started && occupant.ready && !occupant.isBot && !occupant.isYou;
+  const open = !started && Boolean(onClaimSeat) && !occupant.isYou;
   const canAdd =
     Boolean(onAddFriend) &&
-    seat.ready &&
-    !seat.isBot &&
-    !seat.isYou &&
-    !friends.some((friend) => friend.username === seat.name);
-  const voice = seat.ready
+    occupant.ready &&
+    !occupant.isBot &&
+    !occupant.isYou &&
+    !friends.some((friend) => friend.username === occupant.name);
+  const voice = occupant.ready
     ? {
-        muted: seat.muted,
-        speaking: seat.speaking,
-        available: seat.voiceAvailable !== false,
-        canControl: Boolean(onToggleMute && seat.isYou && !seat.isBot),
+        muted: occupant.muted,
+        speaking: occupant.speaking,
+        available: occupant.voiceAvailable !== false,
+        canControl: Boolean(onToggleMute && occupant.isYou && !occupant.isBot),
         onToggle: onToggleMute,
       }
     : null;
@@ -430,7 +517,7 @@ function SeatCard({
         styles.seat,
         stacked && styles.seatStacked,
         stacked && index % 2 === 1 && styles.seatOpp,
-        seat.isYou && styles.seatYou,
+        occupant.isYou && styles.seatYou,
         open && vacant && styles.seatOpen,
         occupiedHuman && styles.seatSwitch,
       ]}
@@ -443,11 +530,11 @@ function SeatCard({
           style={styles.seatHit}
         >
           <Text style={styles.seatName} numberOfLines={1}>
-            {seat.isYou ? t(language, 'you') : seat.ready ? seat.name : t(language, 'emptySeat')}
+            {occupant.isYou ? t(language, 'you') : occupant.ready ? occupant.name : t(language, 'emptySeat')}
           </Text>
           <Text style={styles.seatMeta}>
-            {partner && seat.ready && !seat.isYou ? `${t(language, 'partnerSeat')} · ` : ''}
-            {seat.speaking && !seat.muted ? t(language, 'voiceLive') : seatStatus(language, seat, occupiedHuman)}
+            {partner && occupant.ready && !occupant.isYou ? `${t(language, 'partnerSeat')} · ` : ''}
+            {occupant.speaking && !occupant.muted ? t(language, 'voiceLive') : seatStatus(language, occupant, occupiedHuman)}
           </Text>
         </Pressable>
         {voice ? (
@@ -465,7 +552,7 @@ function SeatCard({
         <UiButton
           label={t(language, 'sendRequest')}
           variant="ghost"
-          onPress={() => onAddFriend?.(seat.name)}
+          onPress={() => onAddFriend?.(occupant.name)}
         />
       ) : null}
     </View>
@@ -520,6 +607,14 @@ const styles = StyleSheet.create({
   roomActions: {
     gap: spacing.sm,
   },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modeBtn: {
+    flex: 1,
+    minHeight: 40,
+  },
   right: {
     flex: 1,
     minHeight: 0,
@@ -527,11 +622,16 @@ const styles = StyleSheet.create({
   },
   teams: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     minHeight: 0,
+    flexGrow: 1,
   },
   teamCol: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 120,
+    minWidth: 110,
     gap: 6,
     padding: 8,
     borderRadius: radius.md,
@@ -540,6 +640,9 @@ const styles = StyleSheet.create({
   },
   teamColOpp: {
     borderColor: colors.team2,
+  },
+  teamColThird: {
+    borderColor: colors.team3,
   },
   teamTitle: {
     color: colors.team1,
@@ -550,6 +653,9 @@ const styles = StyleSheet.create({
   },
   teamTitleOpp: {
     color: colors.team2,
+  },
+  teamTitleThird: {
+    color: colors.team3,
   },
   seat: {
     width: '48%',

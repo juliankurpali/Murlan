@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
-import { Card, Combination, SeatId } from '../domain';
+import { Card, Combination, sortPlayCards } from '../domain';
 import { Language } from '../application/types';
 import { t } from '../i18n';
-import { AnimatePresence, MotionView, cardFlightTransition, cardSelectTransition } from '../motion';
+import { AnimatePresence, MotionView, cardSelectTransition } from '../motion';
 import { colors, motion } from '../theme';
 import { CardFace } from './CardFace';
 import { fanSpread, FLIGHT_CARD, FLIGHT_CARD_PHONE } from './tableLayout';
@@ -11,18 +11,18 @@ import { fanSpread, FLIGHT_CARD, FLIGHT_CARD_PHONE } from './tableLayout';
 type Props = {
   language: Language;
   combination: Combination | null;
+  prior?: Combination[];
   revealed: boolean;
-  originSeat?: SeatId | null;
+  originSeat?: number | null;
   playedBy?: string | null;
   compact?: boolean;
 };
 
-const SEAT_ENTER_Y: Record<SeatId, number> = {
-  0: 36,
-  1: 8,
-  2: -36,
-  3: 8,
-};
+const PRIOR_MAX = 2;
+
+function cardSize(compact?: boolean): { width: number; height: number } {
+  return compact ? FLIGHT_CARD_PHONE : FLIGHT_CARD;
+}
 
 function FannedCard({
   card,
@@ -30,7 +30,6 @@ function FannedCard({
   count,
   language,
   revealed,
-  originSeat,
   compact,
 }: {
   card: Card;
@@ -38,11 +37,11 @@ function FannedCard({
   count: number;
   language: Language;
   revealed: boolean;
-  originSeat: SeatId | null;
   compact?: boolean;
 }) {
   const appear = useRef(new Animated.Value(revealed ? 1 : 0)).current;
   const fan = fanSpread(index, count);
+  const dim = cardSize(compact);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -58,25 +57,16 @@ function FannedCard({
   }, [appear, revealed, index]);
 
   if (Platform.OS === 'web') {
-    const fromHuman = originSeat === 0;
     return (
       <MotionView
         layout
-        initial={
-          fromHuman
-            ? false
-            : {
-                opacity: 0.35,
-                scale: 0.72,
-                y: SEAT_ENTER_Y[originSeat ?? 2],
-              }
-        }
+        initial={{ opacity: 0.7, scale: 0.94, y: fan.y }}
         animate={{ opacity: 1, scale: 1, y: fan.y }}
         exit={{ opacity: 0, scale: 0.7, y: 16 }}
         transition={{
-          ...cardFlightTransition,
-          delay: fromHuman ? 0 : index * 0.04,
-          opacity: { duration: 0.22 },
+          ...cardSelectTransition,
+          delay: index * 0.03,
+          opacity: { duration: 0.16 },
         }}
         style={{
           marginLeft: index === 0 ? 0 : compact ? -18 : -16,
@@ -87,8 +77,8 @@ function FannedCard({
         <CardFace
           card={card}
           size="sm"
-          width={compact ? FLIGHT_CARD_PHONE.width : FLIGHT_CARD.width}
-          height={compact ? FLIGHT_CARD_PHONE.height : FLIGHT_CARD.height}
+          width={dim.width}
+          height={dim.height}
           language={language}
           elevated
         />
@@ -122,8 +112,8 @@ function FannedCard({
       <CardFace
         card={card}
         size="sm"
-        width={compact ? FLIGHT_CARD_PHONE.width : FLIGHT_CARD.width}
-        height={compact ? FLIGHT_CARD_PHONE.height : FLIGHT_CARD.height}
+        width={dim.width}
+        height={dim.height}
         language={language}
         elevated
       />
@@ -131,15 +121,77 @@ function FannedCard({
   );
 }
 
+function CardFan({
+  cards,
+  language,
+  revealed,
+  compact,
+  muted = false,
+}: {
+  cards: Card[];
+  language: Language;
+  revealed: boolean;
+  compact?: boolean;
+  muted?: boolean;
+}) {
+  const dim = cardSize(compact);
+  if (muted) {
+    return (
+      <View style={styles.trickCards} pointerEvents="none">
+        {cards.map((card, index) => {
+          const fan = fanSpread(index, cards.length);
+          return (
+            <View
+              key={card.id}
+              style={{
+                marginLeft: index === 0 ? 0 : compact ? -18 : -16,
+                zIndex: index,
+                transform: [{ rotate: `${fan.rotate}deg` }, { translateY: fan.y }],
+              }}
+            >
+              <CardFace
+                card={card}
+                size="sm"
+                width={dim.width}
+                height={dim.height}
+                language={language}
+                sharedLayout={false}
+              />
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+  return (
+    <View style={styles.trickCards}>
+      <AnimatePresence>
+        {cards.map((card, index) => (
+          <FannedCard
+            key={card.id}
+            card={card}
+            index={index}
+            count={cards.length}
+            language={language}
+            revealed={revealed}
+            compact={compact}
+          />
+        ))}
+      </AnimatePresence>
+    </View>
+  );
+}
+
 export function TrickPile({
   language,
   combination,
+  prior = [],
   revealed,
-  originSeat = null,
   playedBy = null,
   compact = false,
 }: Props) {
-  const cards: Card[] = combination?.cards ?? [];
+  const cards: Card[] = combination ? sortPlayCards(combination.cards, combination.sequence) : [];
+  const under = prior.slice(-PRIOR_MAX);
   const glow = useRef(new Animated.Value(cards.length > 0 && revealed ? 1 : 0)).current;
 
   useEffect(() => {
@@ -153,7 +205,7 @@ export function TrickPile({
     }).start();
   }, [cards.length, revealed, glow]);
 
-  const lit = cards.length > 0 && revealed;
+  const lit = (cards.length > 0 && revealed) || under.length > 0;
   const heavy = combination?.type === 'bomb' || combination?.type === 'flush';
   const comboKey = cards.map((card) => card.id).join(',');
 
@@ -198,21 +250,35 @@ export function TrickPile({
             </Text>
           </View>
         ) : null}
-        <View style={styles.trickCards}>
-          <AnimatePresence>
-            {cards.map((card, index) => (
-              <FannedCard
-                key={card.id}
-                card={card}
-                index={index}
-                count={cards.length}
-                language={language}
-                revealed={revealed}
-                originSeat={originSeat}
-                compact={compact}
-              />
-            ))}
-          </AnimatePresence>
+        <View style={styles.stack}>
+          {under.map((combo, index) => {
+            const depth = under.length - index;
+            const faded = sortPlayCards(combo.cards, combo.sequence);
+            return (
+              <View
+                key={`prior-${faded.map((card) => card.id).join(',')}`}
+                pointerEvents="none"
+                style={[
+                  styles.underlay,
+                  {
+                    opacity: depth === 1 ? 0.5 : 0.28,
+                    transform: [
+                      { translateX: (compact ? -6 : -8) * depth },
+                      { translateY: (compact ? 8 : 11) * depth },
+                      { rotate: `${-5 * depth}deg` },
+                      { scale: 1 - 0.07 * depth },
+                    ],
+                    zIndex: index,
+                  },
+                ]}
+              >
+                <CardFan cards={faded} language={language} revealed compact={compact} muted />
+              </View>
+            );
+          })}
+          <View style={styles.current}>
+            <CardFan cards={cards} language={language} revealed={revealed} compact={compact} />
+          </View>
         </View>
       </View>
     </View>
@@ -231,6 +297,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+  },
+  stack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    minHeight: 74,
+    minWidth: 56,
+  },
+  underlay: {
+    position: 'absolute',
+  },
+  current: {
+    zIndex: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   playedBy: {
     position: 'absolute',

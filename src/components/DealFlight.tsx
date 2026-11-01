@@ -11,6 +11,7 @@ const CARD = { width: 32, height: 46 };
 type Props = {
   dealKey: string;
   tableSize: TableSize | null;
+  seatCount?: number;
   onDone: (dealKey: string) => void;
 };
 
@@ -18,21 +19,23 @@ function FlyingDealCard({
   index,
   tableSize,
   dealKey,
+  seatCount,
   isLast,
   onDone,
 }: {
   index: number;
   tableSize: TableSize;
   dealKey: string;
+  seatCount: number;
   isLast: boolean;
   onDone: (dealKey: string) => void;
 }) {
   const progress = useRef(new Animated.Value(0)).current;
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
-  const seat = (index % 4) as SeatId;
+  const seat = (index % seatCount) as SeatId;
   const origin = tableCenter(tableSize);
-  const dest = seatPoint(seat, tableSize);
+  const dest = seatPoint(seat, tableSize, seatCount);
   const startX = 0;
   const startY = 0;
   const endX = dest.x - origin.x;
@@ -105,7 +108,7 @@ function FlyingDealCard({
   );
 }
 
-export function DealFlight({ dealKey, tableSize, onDone }: Props) {
+export function DealFlight({ dealKey, tableSize, seatCount = 4, onDone }: Props) {
   const pile = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -163,6 +166,7 @@ export function DealFlight({ dealKey, tableSize, onDone }: Props) {
           index={index}
           tableSize={tableSize}
           dealKey={dealKey}
+          seatCount={seatCount}
           isLast={index === DEAL_N - 1}
           onDone={onDone}
         />

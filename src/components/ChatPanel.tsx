@@ -130,11 +130,8 @@ export function ChatPanel({
           returnKeyType="send"
           onSubmitEditing={submit}
           label={t(language, 'chat')}
-          accessory={
-            <Pressable accessibilityRole="button" onPress={submit} style={styles.send}>
-              <Text style={styles.sendLabel}>{t(language, 'sendChat')}</Text>
-            </Pressable>
-          }
+          doneLabel={t(language, 'sendChat')}
+          onDone={submit}
           style={styles.input}
         />
         <Pressable accessibilityRole="button" onPress={submit} style={styles.send}>

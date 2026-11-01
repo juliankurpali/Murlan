@@ -1,13 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useStageDimensions } from '../components/WebStage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SeatAppearance, appearanceForSeat } from '../application/players';
-import { Language } from '../application/types';
-import { Card, lastPlayedSeatFromHistory, placeForSeat, PublicMatchView, SeatId } from '../domain';
+import { clampHandSize, DEFAULT_HAND_SIZE, Language } from '../application/types';
+import {
+  ChaosAbilityId,
+  Card,
+  currentTrickPlays,
+  lastPlayedSeatFromHistory,
+  placeForSeat,
+  PublicChaosView,
+  PublicMatchView,
+  SeatId,
+} from '../domain';
 import { ChatMessage } from '../online/chat';
 import { RoomSeat, tableSeat } from '../online/room';
+import { ReactionEvent, ReactionId } from '../reactions';
+import { AbilityMark, ABILITY_GLYPH } from '../components/AbilityMark';
 import { ActionOrb } from '../components/ActionOrb';
+import { ChaosBook } from '../components/ChaosBook';
+import { SuperBook } from '../components/SuperBook';
+import { ChaosFx } from '../components/ChaosFx';
+import { CHAOS_ABILITY_NAME } from '../components/chaosAbilities';
+import { CardFace } from '../components/CardFace';
 import { ChatPanel } from '../components/ChatPanel';
 import { DealFlight } from '../components/DealFlight';
 import { ExchangeReveal } from '../components/ExchangeReveal';
@@ -15,15 +31,17 @@ import { FeltCloth } from '../components/FeltCloth';
 import { HandStrip } from '../components/HandStrip';
 import { PassBurst } from '../components/PassBurst';
 import { PlayFlight } from '../components/PlayFlight';
+import { ReactionOverlay } from '../components/ReactionOverlay';
+import { ReactionTray } from '../components/ReactionTray';
 import { ScoreChips } from '../components/ScoreChips';
-import { SeatRack } from '../components/SeatRack';
+import { OvalSeat, SeatRack } from '../components/SeatRack';
 import { TableChatFeed } from '../components/TableChatFeed';
-import { TableSize, fitHandCards, handCardMax, handSideInset, isPhoneViewport } from '../components/tableLayout';
+import { TableSize, fitHandCards, handCardMax, handSideInset, isPhoneViewport, scaledHandCard, seatAngle, seatPoint } from '../components/tableLayout';
 import { TrickPile } from '../components/TrickPile';
 import { UiButton } from '../components/UiButton';
-import { seatName, t } from '../i18n';
+import { MessageKey, seatName, t } from '../i18n';
 import { LayoutGroup } from '../motion';
-import { colors, markGutter, motion, spacing } from '../theme';
+import { colors, motion, spacing, teamToken } from '../theme';
 
 type Props = {
   language: Language;
@@ -47,6 +65,21 @@ type Props = {
   onPass: () => void;
   onMenu: () => void;
   onSettings: () => void;
+  fullscreenLabel?: string | null;
+  fullscreenActive?: boolean;
+  onFullscreen?: () => void;
+  handSize?: number;
+  onHandSize?: (size: number) => void;
+  chaos?: PublicChaosView | null;
+  reactions?: ReactionEvent[];
+  reactionCoolUntil?: number;
+  onSendReaction?: (reactionId: ReactionId, targetPlayerId: string) => void;
+  onActivateAbility?: (payload: {
+    abilityId: ChaosAbilityId;
+    targetSeat?: SeatId;
+    cardId?: string;
+    intoCardId?: string;
+  }) => void;
 };
 
 function playSignature(view: PublicMatchView): { key: string; seat: SeatId; cards: Card[] } | null {
@@ -54,9 +87,9 @@ function playSignature(view: PublicMatchView): { key: string; seat: SeatId; card
     const event = view.history[index];
     if (event?.kind === 'play') {
       return {
-        key: `${view.handIndex}-${event.seat}-${event.cards.map((card) => card.id).join(',')}`,
+        key: `${view.handIndex}-${event.seat}-${event.combination.cards.map((card) => card.id).join(',')}`,
         seat: event.seat,
-        cards: event.cards,
+        cards: event.combination.cards,
       };
     }
   }
@@ -79,16 +112,26 @@ export function TableScreen({
   chat = [],
   onSendChat,
   onToggleMute,
+  reactions = [],
+  reactionCoolUntil = 0,
+  onSendReaction,
   onToggleCard,
   onPlay,
   onPass,
   onMenu,
   onSettings,
+  fullscreenLabel = null,
+  fullscreenActive = false,
+  onFullscreen,
+  handSize = DEFAULT_HAND_SIZE,
+  onHandSize,
+  chaos = null,
+  onActivateAbility,
 }: Props) {
   const { width, height } = useStageDimensions();
   const insets = useSafeAreaInsets();
   const phone = isPhoneViewport(width, height);
-  const cardMax = handCardMax(width, height);
+  const cardMax = scaledHandCard(handCardMax(width, height), handSize);
   const padL = Math.max(insets.left, 8);
   const padR = Math.max(insets.right, 8);
   const padT = Math.max(insets.top, 6);
@@ -103,6 +146,10 @@ export function TableScreen({
         ? t(language, 'you')
         : roomSeats?.[lastPlayedSeat]?.name || seatName(language, lastPlayedSeat);
   const play = useMemo(() => playSignature(view), [view]);
+  const priorPlays = useMemo(
+    () => currentTrickPlays(view.history).slice(0, -1).slice(-2).map((event) => event.combination),
+    [view.history],
+  );
   const lastEvent = view.history[view.history.length - 1];
   const passBurst =
     lastEvent?.kind === 'pass'
@@ -126,6 +173,15 @@ export function TableScreen({
   const joinedAt = useRef(Date.now());
   const unread = Math.max(0, chat.length - chatSeen);
   const lastChat = chat[chat.length - 1] ?? null;
+  const [bookOpen, setBookOpen] = useState(false);
+  const [reactOpen, setReactOpen] = useState(false);
+  const [reactPick, setReactPick] = useState<ReactionId | null>(null);
+  const [reactTarget, setReactTarget] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(0);
+  const [chaosPick, setChaosPick] = useState<'idle' | 'target' | 'wildFrom' | 'wildInto'>('idle');
+  const [wildFrom, setWildFrom] = useState<string | null>(null);
+  const [peekHiddenAt, setPeekHiddenAt] = useState<number | null>(null);
+  const [seenNotice, setSeenNotice] = useState<string | null>(null);
   const [landedKey, setLandedKey] = useState(play?.key ?? '');
   const skipFlight = useRef(true);
   const dealKey = `deal-${view.handIndex}`;
@@ -216,16 +272,22 @@ export function TableScreen({
     [],
   );
 
-  const sharedLayout = Platform.OS === 'web';
-  const flying = !sharedLayout && Boolean(play && play.key !== landedKey);
+  const flying = Boolean(play && play.key !== landedKey);
   const revealed = !flying;
-  const youTeam = localSeat % 2;
-  const youScore = view.teamScores.team0;
-  const themScore = view.teamScores.team1;
-  const team1Label =
-    youTeam === 0 ? `${t(language, 'team1')} · ${t(language, 'you')}` : t(language, 'team1');
-  const team2Label =
-    youTeam === 1 ? `${t(language, 'team2')} · ${t(language, 'you')}` : t(language, 'team2');
+  const seatCount = view.cardCounts.length;
+  const superTable = view.mode === 'super' || seatCount === 6;
+  const youTeam = view.teamOf[localSeat] ?? localSeat % (superTable ? 3 : 2);
+  const scoreFor = (team: number) =>
+    team === 0 ? view.teamScores.team0 : team === 1 ? view.teamScores.team1 : (view.teamScores.team2 ?? 0);
+  const themTeam = youTeam === 1 ? 0 : 1;
+  const extraTeam = superTable ? (youTeam === 2 ? 1 : 2) : null;
+  const youScore = scoreFor(youTeam);
+  const themScore = scoreFor(themTeam);
+  const teamKey = (team: number) => (team === 0 ? 'team1' : team === 1 ? 'team2' : 'team3');
+  const team1Label = `${t(language, teamKey(youTeam))} · ${t(language, 'you')}`;
+  const team2Label = t(language, teamKey(themTeam));
+  const extraLabel = extraTeam !== null ? t(language, teamKey(extraTeam)) : '';
+  const extraColor = extraTeam !== null ? teamToken(extraTeam) : colors.team3;
 
   const onTableLayout = (event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout;
@@ -238,12 +300,108 @@ export function TableScreen({
   };
 
   const giveTarget = exchanging ? view.pendingExchange?.lastSeat ?? null : null;
+  const ownAbility = chaos?.own ?? null;
+  const chaosAction = ownAbility && !ownAbility.consumed ? chaosPick : 'idle';
+  const peek =
+    chaos?.revealedHand && chaos.revealedHand.expiresAt !== peekHiddenAt ? chaos.revealedHand : null;
+  const latestNotice = chaos?.notices[chaos.notices.length - 1] ?? null;
+  const fxNotice =
+    chaos?.notices
+      .slice()
+      .reverse()
+      .find((row) => row.audience === 'all') ?? null;
+  const showNotice = Boolean(latestNotice && latestNotice.id !== seenNotice);
+  const targeting = chaosAction === 'target';
+  const reactEnabled = Boolean(onSendReaction);
+  const coolLeft = Math.max(0, Math.ceil((reactionCoolUntil - nowTick) / 1000));
+  const pickingReact = reactEnabled && reactPick !== null && coolLeft === 0 && !reactTarget;
+  const seatOfPlayer = (playerId: string): SeatId | null => {
+    const index = roomSeats?.findIndex((seat) => seat.playerId === playerId) ?? -1;
+    return index >= 0 ? (index as SeatId) : null;
+  };
+  const closeReact = () => {
+    setReactOpen(false);
+    setReactPick(null);
+    setReactTarget(null);
+  };
+  const sendReactionTo = (playerId: string, reactionId: ReactionId | null) => {
+    if (!reactionId || coolLeft > 0) {
+      return;
+    }
+    onSendReaction?.(reactionId, playerId);
+    closeReact();
+  };
+  const canUseAbility =
+    Boolean(ownAbility) &&
+    ownAbility?.activationType === 'active' &&
+    !ownAbility.consumed &&
+    ownAbility.remainingUses > 0 &&
+    view.phase !== 'matchComplete' &&
+    view.phase !== 'handComplete' &&
+    (ownAbility.abilityId === 'mindReader' || view.phase === 'playing');
 
-  const rack = (side: 'north' | 'east' | 'west' | 'south') => {
-    const seat = tableSeat(localSeat, side) as SeatId;
+  useEffect(() => {
+    setNowTick(Date.now());
+    if (reactionCoolUntil <= Date.now()) {
+      return;
+    }
+    const handle = setInterval(() => setNowTick(Date.now()), 250);
+    return () => clearInterval(handle);
+  }, [reactionCoolUntil]);
+
+  useEffect(() => {
+    const expiresAt = chaos?.revealedHand?.expiresAt;
+    if (!expiresAt) {
+      return;
+    }
+    const wait = Math.max(0, expiresAt - Date.now());
+    const handle = setTimeout(() => setPeekHiddenAt(expiresAt), wait);
+    return () => clearTimeout(handle);
+  }, [chaos?.revealedHand?.expiresAt]);
+
+  useEffect(() => {
+    if (!latestNotice || latestNotice.id === seenNotice) {
+      return;
+    }
+    const handle = setTimeout(() => setSeenNotice(latestNotice.id), 3200);
+    return () => clearTimeout(handle);
+  }, [latestNotice, seenNotice]);
+
+  const activate = (payload: { targetSeat?: SeatId; cardId?: string; intoCardId?: string }) => {
+    if (!ownAbility || !onActivateAbility) {
+      return;
+    }
+    onActivateAbility({ abilityId: ownAbility.abilityId, ...payload });
+    setChaosPick('idle');
+    setWildFrom(null);
+  };
+
+  const pressAbility = () => {
+    if (!canUseAbility || !ownAbility) {
+      return;
+    }
+    if (chaosPick !== 'idle') {
+      setChaosPick('idle');
+      setWildFrom(null);
+      return;
+    }
+    closeReact();
+    if (ownAbility.targeting === 'opponent') {
+      setChaosPick('target');
+      return;
+    }
+    if (ownAbility.abilityId === 'wildCard') {
+      setChaosPick('wildFrom');
+    }
+  };
+
+  const rack = (side: 'north' | 'east' | 'west' | 'south' | 'northwest' | 'northeast' | 'southwest' | 'southeast') => {
+    const seat = tableSeat(localSeat, side, seatCount) as SeatId;
     const occupant = roomSeats?.[seat] ?? null;
-    const place = placeForSeat(seat, view.finishOrder);
-    const placeKeys = ['first', 'second', 'third', 'fourth'] as const;
+    const place = placeForSeat(seat, view.finishOrder, seatCount);
+    const roundWinner = view.finishOrder[0];
+    const placeKeys = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'] as const;
+    const team = view.teamOf[seat] ?? seat % (superTable ? 3 : 2);
     return (
       <SeatRack
         seat={seat}
@@ -255,13 +413,14 @@ export function TableScreen({
         lastPlayed={lastPlayedSeat === seat}
         place={place}
         placeLabel={place ? t(language, placeKeys[place - 1] ?? 'fourth') : null}
-        partner={seat % 2 === localSeat % 2}
+        partner={(view.teamOf[seat] ?? 0) === youTeam}
+        team={team}
         side={side}
         turnDurationMs={turnDurationMs}
         turnToken={`${view.handIndex}-${view.currentSeat}-${view.history.length}`}
         appearance={appearanceForSeat(seat, humanAppearance, localSeat)}
         dealing={dealing}
-        teamLabel={t(language, seat % 2 === 0 ? 'team1' : 'team2')}
+        teamLabel={t(language, team === 0 ? 'team1' : team === 1 ? 'team2' : 'team3')}
         spotlight={giveTarget === seat}
         dimmed={giveTarget !== null && giveTarget !== seat && seat !== localSeat}
         displayName={occupant ? (occupant.isYou ? t(language, 'you') : occupant.name) : undefined}
@@ -286,6 +445,61 @@ export function TableScreen({
                 ? t(language, 'voiceUnavailable')
                 : null
         }
+        abilityMark={
+          chaos
+            ? seat === localSeat && ownAbility
+              ? <AbilityMark glyph={ABILITY_GLYPH[ownAbility.abilityId]} consumed={ownAbility.consumed} />
+              : seat !== localSeat
+                ? <AbilityMark glyph="?" mystery />
+                : null
+            : null
+        }
+        frozen={Boolean(chaos?.frozenSeats.includes(seat))}
+        selectable={
+          pickingReact
+            ? Boolean(occupant?.playerId) && seat !== localSeat
+            : targeting && seat !== localSeat && place === null
+        }
+        onPressSeat={
+          pickingReact && occupant?.playerId && seat !== localSeat
+            ? () => sendReactionTo(occupant.playerId!, reactPick)
+            : targeting && seat !== localSeat && place === null
+              ? () => activate({ targetSeat: seat })
+              : undefined
+        }
+        handSize={
+          side === 'south' && onHandSize
+            ? {
+                value: clampHandSize(handSize),
+                onChange: (next) => onHandSize(clampHandSize(next)),
+              }
+            : null
+        }
+        celebrateKey={roundWinner === seat ? `win-${view.handIndex}-${seat}` : null}
+        gift={
+          reactEnabled && occupant?.playerId && seat !== localSeat
+            ? {
+                disabled: coolLeft > 0,
+                selected: reactTarget === occupant.playerId,
+                label: t(language, 'reactionGift'),
+                onPress: () => {
+                  if (coolLeft > 0) {
+                    return;
+                  }
+                  setChatOpen(false);
+                  setBookOpen(false);
+                  setMenuOpen(false);
+                  setChaosPick('idle');
+                  if (reactPick) {
+                    sendReactionTo(occupant.playerId!, reactPick);
+                    return;
+                  }
+                  setReactTarget(occupant.playerId);
+                  setReactOpen(true);
+                },
+              }
+            : null
+        }
       />
     );
   };
@@ -298,7 +512,7 @@ export function TableScreen({
           {
             paddingTop: padT,
             paddingLeft: padL,
-            paddingRight: padR + markGutter,
+            paddingRight: padR,
           },
         ]}
       >
@@ -308,11 +522,28 @@ export function TableScreen({
             label={t(language, 'menu')}
             onPress={() => {
               setChatOpen(false);
+              setBookOpen(false);
+              closeReact();
               setMenuOpen((open) => !open);
             }}
           />
           {menuOpen ? (
             <View style={styles.menuSheet}>
+              {chaos || superTable ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setMenuOpen(false);
+                    setChatOpen(false);
+                    setBookOpen(true);
+                  }}
+                  style={styles.menuItem}
+                >
+                  <Text style={styles.menuItemText}>
+                    {t(language, chaos ? 'chaosBookTitle' : 'superBookTitle')}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -323,6 +554,19 @@ export function TableScreen({
               >
                 <Text style={styles.menuItemText}>{t(language, 'settings')}</Text>
               </Pressable>
+              {onFullscreen && fullscreenLabel ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: fullscreenActive }}
+                  onPress={() => {
+                    setMenuOpen(false);
+                    onFullscreen();
+                  }}
+                  style={styles.menuItem}
+                >
+                  <Text style={styles.menuItemText}>{fullscreenLabel}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -338,6 +582,21 @@ export function TableScreen({
         </View>
         <View style={styles.topSpacer} pointerEvents="none" />
         <View style={styles.hudRight}>
+          {chaos || superTable ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t(language, chaos ? 'chaosBookTitle' : 'superBookTitle')}
+              onPress={() => {
+                setMenuOpen(false);
+                setChatOpen(false);
+                closeReact();
+                setBookOpen((open) => !open);
+              }}
+              style={styles.chatChip}
+            >
+              <Text style={styles.chatChipText}>{t(language, chaos ? 'chaosBookChip' : 'superBookChip')}</Text>
+            </Pressable>
+          ) : null}
           {onSendChat ? (
             <Pressable
               accessibilityRole="button"
@@ -351,6 +610,9 @@ export function TableScreen({
                   chatSeen > 0 && chatSeen < chat.length ? chat[chatSeen - 1] : chat[chat.length - 1];
                 setChatResumeId(lastRead?.id ?? null);
                 setChatOpen(true);
+                closeReact();
+                setBookOpen(false);
+                setMenuOpen(false);
               }}
               style={styles.chatChip}
             >
@@ -362,14 +624,16 @@ export function TableScreen({
             compact
             you={youScore}
             them={themScore}
-            target={view.targetScore}
             youLabel={team1Label}
             themLabel={team2Label}
-            targetLabel={t(language, 'target', { score: view.targetScore })}
+            youColor={teamToken(youTeam)}
+            themColor={teamToken(themTeam)}
+            extra={
+              extraTeam !== null
+                ? { label: extraLabel, score: scoreFor(extraTeam), color: extraColor }
+                : undefined
+            }
           />
-          <View style={styles.roundChip}>
-            <Text style={styles.roundText}>{`R${view.handIndex + 1}`}</Text>
-          </View>
         </View>
       </View>
       <View
@@ -383,19 +647,35 @@ export function TableScreen({
           },
         ]}
       >
-        {!chatOpen ? <TableChatFeed messages={feed} /> : null}
+        {!chatOpen ? <TableChatFeed messages={feed} teamOf={view.teamOf} /> : null}
       </View>
 
       <LayoutGroup>
         <View style={styles.table} onLayout={onTableLayout}>
           <FeltCloth />
-          <View style={[styles.north, { top: rimY }]}>{rack('north')}</View>
-          <View style={[styles.west, { left: rimX }]}>{rack('west')}</View>
-          <View style={[styles.east, { right: rimX }]}>{rack('east')}</View>
+          {tableSize
+            ? (superTable
+                ? (['north', 'northwest', 'southwest', 'northeast', 'southeast'] as const)
+                : (['north', 'west', 'east'] as const)
+              ).map((side) => {
+                const visual = tableSeat(0, side, seatCount);
+                return (
+                  <OvalSeat
+                    key={side}
+                    point={seatPoint(visual as SeatId, tableSize, seatCount)}
+                    angle={seatAngle(visual, seatCount)}
+                    bounds={tableSize}
+                  >
+                    {rack(side)}
+                  </OvalSeat>
+                );
+              })
+            : null}
           <View style={styles.center} pointerEvents="box-none">
             <TrickPile
               language={language}
               combination={!dealing && !exchanging && revealed ? view.trick.combination : null}
+              prior={!dealing && !exchanging ? priorPlays : []}
               revealed={!dealing && revealed}
               originSeat={lastPlayedSeat}
               playedBy={lastPlayedName}
@@ -419,10 +699,17 @@ export function TableScreen({
               legalIds={showLegalMoves ? legalCardIds : undefined}
               selectionLegal={selectionLegal}
               language={language}
-              disabled={dealing || !humanTurn}
+              disabled={dealing || (!humanTurn && chaosAction !== 'wildFrom')}
               fit={handFit}
               cardMax={cardMax}
-              onToggle={onToggleCard}
+              onToggle={
+                chaosAction === 'wildFrom'
+                  ? (cardId) => {
+                      setWildFrom(cardId);
+                      setChaosPick('wildInto');
+                    }
+                  : onToggleCard
+              }
             />
           </View>
           <View
@@ -453,6 +740,21 @@ export function TableScreen({
             style={[styles.passCol, { left: rimX, bottom: rimY }]}
             pointerEvents="box-none"
           >
+            {chaos && ownAbility ? (
+              <UiButton
+                label={
+                  ownAbility.consumed
+                    ? t(language, 'chaosUsed')
+                    : chaosAction !== 'idle'
+                      ? t(language, 'cancel')
+                      : t(language, CHAOS_ABILITY_NAME[ownAbility.abilityId])
+                }
+                variant={canUseAbility && chaosAction === 'idle' ? 'go' : 'secondary'}
+                disabled={ownAbility.activationType !== 'active' || ownAbility.consumed}
+                onPress={pressAbility}
+                style={styles.cornerBtn}
+              />
+            ) : null}
             <UiButton
               label={t(language, 'pass')}
               variant="secondary"
@@ -471,7 +773,7 @@ export function TableScreen({
             />
           </View>
           {dealing ? (
-            <DealFlight dealKey={dealKey} tableSize={tableSize} onDone={setDealtKey} />
+            <DealFlight dealKey={dealKey} tableSize={tableSize} seatCount={seatCount} onDone={setDealtKey} />
           ) : null}
           {flying && play ? (
             <PlayFlight
@@ -481,7 +783,23 @@ export function TableScreen({
               localSeat={localSeat}
               tableSize={tableSize}
               language={language}
+              seatCount={seatCount}
               onLanded={setLandedKey}
+            />
+          ) : null}
+          <ReactionOverlay
+            events={reactions}
+            localSeat={localSeat}
+            seatOfPlayer={seatOfPlayer}
+            tableSize={tableSize}
+            seatCount={seatCount}
+          />
+          {chaos ? (
+            <ChaosFx
+              notice={fxNotice && Date.now() - fxNotice.at < 2200 ? fxNotice : null}
+              localSeat={localSeat}
+              tableSize={tableSize}
+              seatCount={seatCount}
             />
           ) : null}
           {passBurst ? (
@@ -491,6 +809,7 @@ export function TableScreen({
               localSeat={localSeat}
               label={t(language, 'passed')}
               tableSize={tableSize}
+              seatCount={seatCount}
             />
           ) : null}
           {view.lastExchange ? (
@@ -514,11 +833,8 @@ export function TableScreen({
               incomingOnly
             />
           ) : null}
-          <View
-            accessibilityLabel={t(language, 'firstToGoOut')}
-            style={[styles.infoDot, { top: padT + 6, left: padL + 44 }]}
-          >
-            <Text style={styles.infoMark}>i</Text>
+          <View style={[styles.roundChip, { top: padT + 6, left: padL + 44 }]} pointerEvents="none">
+            <Text style={styles.roundText}>{`R${view.handIndex + 1}`}</Text>
           </View>
         </View>
       </LayoutGroup>
@@ -531,6 +847,13 @@ export function TableScreen({
           style={styles.menuScrim}
         />
       ) : null}
+      <ChaosBook
+        language={language}
+        visible={bookOpen && Boolean(chaos)}
+        ownAbilityId={ownAbility?.abilityId}
+        onClose={() => setBookOpen(false)}
+      />
+      <SuperBook language={language} visible={bookOpen && superTable && !chaos} onClose={() => setBookOpen(false)} />
       {chatOpen && onSendChat ? (
         <>
           <Pressable
@@ -550,6 +873,81 @@ export function TableScreen({
             />
           </View>
         </>
+      ) : null}
+      {reactOpen && reactEnabled ? (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t(language, 'back')}
+            onPress={closeReact}
+            style={styles.reactScrim}
+          />
+          <View style={[styles.reactDock, { top: padT + 40, right: padR }]}>
+            <ReactionTray
+              language={language}
+              selected={reactPick}
+              onPick={(id) => {
+                if (coolLeft > 0) {
+                  return;
+                }
+                if (reactTarget) {
+                  sendReactionTo(reactTarget, id);
+                  return;
+                }
+                setReactPick(id);
+              }}
+            />
+          </View>
+        </>
+      ) : null}
+      {targeting ? (
+        <View pointerEvents="none" style={[styles.promptPill, { bottom: rimY + youBand + 8, alignSelf: 'center' }]}>
+          <Text style={styles.promptText}>{t(language, 'chaosSelectTarget')}</Text>
+        </View>
+      ) : null}
+      {reactOpen && reactEnabled && !targeting ? (
+        <View pointerEvents="none" style={[styles.promptPill, { bottom: rimY + youBand + 8, alignSelf: 'center' }]}>
+          <Text style={styles.promptText}>
+            {t(language, reactTarget ? 'reactionPickReaction' : 'reactionPickTarget')}
+          </Text>
+        </View>
+      ) : null}
+      {chaosAction === 'wildFrom' ? (
+        <View pointerEvents="none" style={[styles.promptPill, { bottom: rimY + youBand + handFit.height + 8, alignSelf: 'center' }]}>
+          <Text style={styles.promptText}>{t(language, 'chaosSelectCard')}</Text>
+        </View>
+      ) : null}
+      {chaosAction === 'wildInto' && chaos ? (
+        <View style={[styles.wildSheet, { left: rimX + 8, right: rimX + 8, bottom: rimY + youBand + 8 }]}>
+          <Text style={styles.promptText}>{t(language, 'chaosSelectWild')}</Text>
+          <ScrollView style={styles.wildScroll} contentContainerStyle={styles.wildRow}>
+            {chaos.wildOptions.map((card) => (
+              <CardFace
+                key={card.id}
+                card={card}
+                language={language}
+                size="sm"
+                onPress={() => activate({ cardId: wildFrom ?? undefined, intoCardId: card.id })}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+      {peek ? (
+        <View pointerEvents="none" style={styles.peekSheet}>
+          <Text style={styles.promptText}>{t(language, 'chaosMindReaderYou')}</Text>
+          <View style={styles.wildRow}>
+            {peek.cards.map((card) => (
+              <CardFace key={card.id} card={card} language={language} size="sm" disabled />
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {showNotice && latestNotice ? (
+        <View pointerEvents="none" style={styles.noticeToast}>
+          <Text style={styles.noticeGlyph}>{ABILITY_GLYPH[latestNotice.abilityId]}</Text>
+          <Text style={styles.promptText}>{t(language, latestNotice.key as MessageKey)}</Text>
+        </View>
       ) : null}
       {lastError ? <View style={styles.errorDot} /> : null}
     </View>
@@ -620,15 +1018,17 @@ const styles = StyleSheet.create({
     minWidth: 8,
   },
   roundChip: {
-    minHeight: 22,
-    paddingHorizontal: 7,
-    borderRadius: 8,
+    position: 'absolute',
+    minHeight: 16,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    zIndex: 8,
   },
   voiceChip: {
     minHeight: 36,
@@ -657,9 +1057,17 @@ const styles = StyleSheet.create({
   },
   roundText: {
     color: colors.muted,
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
+  },
+  reactScrim: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 11,
+  },
+  reactDock: {
+    position: 'absolute',
+    zIndex: 12,
   },
   chatChip: {
     minHeight: 26,
@@ -722,65 +1130,24 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: 'visible',
   },
-  north: {
-    position: 'absolute',
-    top: 8,
-    left: '22%',
-    right: '22%',
-    alignItems: 'center',
-    zIndex: 2,
-  },
-  west: {
-    position: 'absolute',
-    left: 8,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    zIndex: 3,
-  },
-  east: {
-    position: 'absolute',
-    right: 8,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    zIndex: 3,
-  },
   center: {
     position: 'absolute',
     left: '18%',
     right: '18%',
-    top: '22%',
-    bottom: '22%',
+    top: '14%',
+    bottom: '30%',
     zIndex: 4,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  infoDot: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(232, 197, 71, 0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 8,
-  },
-  infoMark: {
-    color: colors.gold,
-    fontSize: 12,
-    fontWeight: '700',
   },
   south: {
     position: 'absolute',
     left: 96,
     right: 96,
     bottom: 8,
-    zIndex: 3,
+    zIndex: 8,
     alignItems: 'center',
+    overflow: 'visible',
   },
   hand: {
     position: 'absolute',
@@ -807,6 +1174,58 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     textAlign: 'center',
+  },
+  wildSheet: {
+    position: 'absolute',
+    maxHeight: 168,
+    padding: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(8, 16, 18, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.4)',
+    gap: 8,
+    zIndex: 14,
+  },
+  wildScroll: {
+    maxHeight: 128,
+  },
+  wildRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    justifyContent: 'center',
+  },
+  peekSheet: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '28%',
+    maxWidth: '72%',
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(8, 16, 18, 0.94)',
+    borderWidth: 1,
+    borderColor: colors.goldHi,
+    gap: 8,
+    zIndex: 15,
+    alignItems: 'center',
+  },
+  noticeToast: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(8, 16, 18, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.5)',
+    zIndex: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  noticeGlyph: {
+    fontSize: 18,
   },
   errorDot: {
     position: 'absolute',

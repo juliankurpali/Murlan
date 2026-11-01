@@ -1,4 +1,12 @@
-import { CombinationType, GameState, MatchMode, PublicMatchView, SeatId } from '../domain';
+import {
+  ChaosState,
+  CombinationType,
+  GameState,
+  MatchMode,
+  PublicChaosView,
+  PublicMatchView,
+  SeatId,
+} from '../domain';
 import { ChatMessage } from '../online/chat';
 import { ConnectionState } from '../online/lifecycle';
 
@@ -53,7 +61,7 @@ export type GameInvite = {
   toId: string;
   status: 'pending' | 'accepted' | 'declined';
   createdAt: number;
-  preferredTeam: 0 | 1 | null;
+  preferredTeam: 0 | 1 | 2 | null;
 };
 
 export type JoinRequest = {
@@ -62,7 +70,7 @@ export type JoinRequest = {
   fromId: string;
   status: 'pending' | 'accepted' | 'declined';
   createdAt: number;
-  preferredTeam: 0 | 1 | null;
+  preferredTeam: 0 | 1 | 2 | null;
 };
 
 export type SeatSwitchRequest = {
@@ -85,6 +93,18 @@ export type GameSeat = {
   lobbyReady: boolean;
 };
 
+export type TableSeries = {
+  matches: number;
+  teamWins: number[];
+  seatWins: number[];
+};
+
+export const EMPTY_SERIES: TableSeries = {
+  matches: 0,
+  teamWins: [0, 0],
+  seatWins: [0, 0, 0, 0],
+};
+
 export type PlatformGame = {
   id: string;
   code: string;
@@ -93,11 +113,16 @@ export type PlatformGame = {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
-  seats: [GameSeat, GameSeat, GameSeat, GameSeat];
+  seats: GameSeat[];
   match: GameState | null;
+  chaos: ChaosState | null;
   chat: ChatMessage[];
   seenIntents: Record<string, string[]>;
   nextHandReady: SeatId[];
+  playAgainReady: SeatId[];
+  series: TableSeries;
+  resultRecorded: boolean;
+  statsRecorded: boolean;
 };
 
 export type MatchHistoryRow = {
@@ -208,7 +233,7 @@ export type AdminGameView = {
   handIndex: number | null;
   currentName: string | null;
   targetScore: number | null;
-  teamScores: { team0: number; team1: number } | null;
+  teamScores: { team0: number; team1: number; team2?: number } | null;
   trick: CombinationType | null;
   chatLines: number;
   humans: number;
@@ -245,6 +270,9 @@ export type TablePayload = {
   legalCardIds: string[];
   humanTurn: boolean;
   nextHandReady: SeatId[];
+  playAgainReady?: SeatId[];
+  series?: TableSeries;
+  chaos?: PublicChaosView | null;
 };
 
 export type InboxItem = PlatformNotice;

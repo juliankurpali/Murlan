@@ -22,7 +22,7 @@ export function t(
 }
 
 export function seatName(language: Language, seat: number): string {
-  const keys = ['you', 'bot1', 'bot2', 'bot3'] as const;
+  const keys = ['you', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5'] as const;
   const key = keys[seat] ?? 'bot1';
   const name = t(language, key);
   return seat === 0 ? name : withAiLabel(name);
@@ -47,6 +47,10 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   'bad-seat': 'seatTaken',
   'seats-not-ready': 'seatsNotReady',
   'players-not-ready': 'playersNotReady',
+  'chaos-no-ability': 'chaosUnavailable',
+  'chaos-used': 'chaosUsed',
+  'chaos-bad-target': 'chaosSelectTarget',
+  'chaos-bad-card': 'chaosSelectCard',
   auth: 'sessionExpired',
   'bad-device': 'tryAgain',
   replaced: 'replacedSession',

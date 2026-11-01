@@ -26,6 +26,10 @@ export const THREE_OF_SPADES_ID = 'S3';
 export const BLACK_JOKER_ID = 'JB';
 export const RED_JOKER_ID = 'JR';
 
+export function isThreeOfSpades(card: Card): boolean {
+  return card.kind === 'standard' && card.rank === 3 && card.suit === 'spades';
+}
+
 export const SUIT_ORDER: Record<Suit, number> = {
   spades: 0,
   hearts: 1,

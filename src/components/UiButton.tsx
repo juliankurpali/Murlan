@@ -45,6 +45,7 @@ export function UiButton({
           variant === 'secondary' && styles.secondaryLabel,
           variant === 'ghost' && styles.ghostLabel,
           variant === 'go' && styles.goLabel,
+          disabled && styles.disabledLabel,
         ]}
       >
         {label}
@@ -89,7 +90,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   disabled: {
-    opacity: 0.38,
+    opacity: 0.42,
+    backgroundColor: 'rgba(40, 48, 52, 0.72)',
+    borderColor: 'rgba(120, 130, 136, 0.35)',
+    shadowOpacity: 0,
+  },
+  disabledLabel: {
+    color: '#8b9498',
   },
   pressed: {
     opacity: 0.88,

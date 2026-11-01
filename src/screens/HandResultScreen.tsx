@@ -1,20 +1,21 @@
+import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { SeatAppearance, appearanceForSeat } from '../application/players';
 import { Language } from '../application/types';
+import { ChaosBook } from '../components/ChaosBook';
+import { SuperBook } from '../components/SuperBook';
 import { LandscapeFrame } from '../components/LandscapeFrame';
 import { PlayerAvatar } from '../components/PlayerAvatar';
+import { WinnerCrown, WinFireworks } from '../components/WinFireworks';
 import { UiButton } from '../components/UiButton';
 import { VoiceMic, voiceMicLabel } from '../components/VoiceMic';
-import { placeForSeat, PublicMatchView, SeatId } from '../domain';
+import { ChaosAbilityId, placeForSeat, PublicMatchView, SeatId } from '../domain';
+import { TableSeries } from '../platform/types';
 import { RoomSeat } from '../online/room';
 import { seatName, t } from '../i18n';
-import { colors, fonts, seatToken, spacing } from '../theme';
+import { colors, fonts, spacing, teamToken } from '../theme';
 
-const PLACE_KEYS = ['first', 'second', 'third', 'fourth'] as const;
-const TEAM_SEATS: [SeatId[], SeatId[]] = [
-  [0, 2],
-  [1, 3],
-];
+const PLACE_KEYS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'] as const;
 
 type Props = {
   language: Language;
@@ -29,6 +30,11 @@ type Props = {
   waitingFor?: string | null;
   roomSeats?: RoomSeat[] | null;
   onToggleMute?: () => void;
+  specialVictorySeat?: SeatId | null;
+  chaosActive?: boolean;
+  chaosAbilityId?: ChaosAbilityId | null;
+  playAgainReady?: boolean;
+  series?: TableSeries | null;
 };
 
 function winnerText(view: PublicMatchView, language: Language, localSeat: SeatId): string {
@@ -38,10 +44,13 @@ function winnerText(view: PublicMatchView, language: Language, localSeat: SeatId
   if (view.winner === 'team1') {
     return t(language, 'winnerTeam2');
   }
+  if (view.winner === 'team2') {
+    return t(language, 'winnerTeam3');
+  }
   if (view.winner === localSeat) {
     return t(language, 'winnerYou');
   }
-  if (view.winner !== null) {
+  if (typeof view.winner === 'number') {
     return t(language, 'winnerBot', { name: seatName(language, view.winner) });
   }
   return t(language, 'matchOver');
@@ -68,6 +77,7 @@ function PlayerRow({
   name,
   occupant,
   onToggleMute,
+  gamesWon,
 }: {
   seat: SeatId;
   view: PublicMatchView;
@@ -77,11 +87,13 @@ function PlayerRow({
   name: string;
   occupant?: RoomSeat | null;
   onToggleMute?: () => void;
+  gamesWon?: number;
 }) {
-  const place = placeForSeat(seat, view.finishOrder);
+  const place = placeForSeat(seat, view.finishOrder, view.cardCounts.length);
   const handPts = view.lastHandPoints?.[seat] ?? 0;
   const total = view.scores[seat] ?? 0;
   const you = seat === localSeat;
+  const accent = teamToken(view.teamOf[seat] ?? seat % (view.mode === 'super' ? 3 : 2));
   const voice = occupant
     ? {
         muted: occupant.muted,
@@ -93,12 +105,18 @@ function PlayerRow({
     : null;
   return (
     <View style={[styles.row, you && styles.rowYou]}>
-      <View style={[styles.avatar, { borderColor: seatToken[seat] }]}>
-        {appearance.profileUri ? (
-          <Image source={{ uri: appearance.profileUri }} style={styles.photo} />
-        ) : (
-          <PlayerAvatar size={26} accent={seatToken[seat]} tone={appearance.tone} />
-        )}
+      <View style={styles.avatarWrap}>
+        <View style={[styles.avatar, { borderColor: accent }]}>
+          {appearance.profileUri ? (
+            <Image source={{ uri: appearance.profileUri }} style={styles.photo} />
+          ) : (
+            <PlayerAvatar size={26} accent={accent} tone={appearance.tone} />
+          )}
+        </View>
+        {place === 1 ? <WinnerCrown /> : null}
+        {place === 1 ? (
+          <WinFireworks burstKey={`result-${view.handIndex}-${seat}`} accent={accent} />
+        ) : null}
       </View>
       <Text style={[styles.player, you && styles.playerYou]} numberOfLines={1}>
         {name}
@@ -118,6 +136,7 @@ function PlayerRow({
       </View>
       <Text style={styles.handPts}>+{handPts}</Text>
       <Text style={styles.total}>{total}</Text>
+      {gamesWon !== undefined ? <Text style={styles.total}>{gamesWon}</Text> : null}
     </View>
   );
 }
@@ -134,6 +153,7 @@ function TeamCard({
   names,
   roomSeats,
   onToggleMute,
+  seriesWins,
 }: {
   label: string;
   score: number;
@@ -146,14 +166,18 @@ function TeamCard({
   names?: Array<string | undefined>;
   roomSeats?: RoomSeat[] | null;
   onToggleMute?: () => void;
+  seriesWins?: number[];
 }) {
+  const roundPts = seats.reduce((sum, seat) => sum + (view.lastHandPoints?.[seat] ?? 0), 0 as number);
   return (
     <View style={[styles.teamCard, { borderColor: color }]}>
       <View style={styles.teamHead}>
         <Text style={[styles.teamName, { color }]} numberOfLines={1}>
           {label}
         </Text>
-        <Text style={[styles.teamScore, { color }]}>{score}</Text>
+        <Text style={[styles.teamScore, { color }]}>
+          {view.lastHandPoints ? `+${roundPts} · ${score}` : score}
+        </Text>
       </View>
       <View style={styles.colHead}>
         <View style={styles.colAvatar} />
@@ -161,6 +185,7 @@ function TeamCard({
         <View style={styles.colPlace} />
         <Text style={[styles.colLabel, styles.colPts]}>{t(language, 'thisHand')}</Text>
         <Text style={[styles.colLabel, styles.colPts]}>{t(language, 'total')}</Text>
+        {seriesWins ? <Text style={[styles.colLabel, styles.colPts]}>{t(language, 'seriesWins')}</Text> : null}
       </View>
       {seats.map((seat) => (
         <PlayerRow
@@ -173,6 +198,7 @@ function TeamCard({
           name={playerName(language, seat, localSeat, names)}
           occupant={roomSeats?.[seat]}
           onToggleMute={onToggleMute}
+          gamesWon={seriesWins?.[seat]}
         />
       ))}
     </View>
@@ -192,12 +218,26 @@ export function HandResultScreen({
   waitingFor = null,
   roomSeats = null,
   onToggleMute,
+  specialVictorySeat = null,
+  chaosActive = false,
+  chaosAbilityId = null,
+  playAgainReady = false,
+  series = null,
 }: Props) {
-  const appearances = ([0, 1, 2, 3] as SeatId[]).map((seat) => appearanceForSeat(seat, humanAppearance, localSeat));
+  const [bookOpen, setBookOpen] = useState(false);
+  const seatCount = view.cardCounts.length;
+  const appearances = Array.from({ length: seatCount }, (_, seat) =>
+    appearanceForSeat(seat as SeatId, humanAppearance, localSeat),
+  );
   const matchOver = view.phase === 'matchComplete';
   const teams = view.teamScores;
-  const yourTeam = localSeat % 2;
-  const teamOrder = [0, 1] as const;
+  const yourTeam = view.teamOf[localSeat] ?? localSeat % (view.mode === 'super' ? 3 : 2);
+  const teamOrder = teams.team2 === undefined ? ([0, 1] as const) : ([0, 1, 2] as const);
+  const teamScore = (team: number) => (team === 0 ? teams.team0 : team === 1 ? teams.team1 : (teams.team2 ?? 0));
+  const teamColor = (team: number) => (team === 0 ? colors.team1 : team === 1 ? colors.team2 : colors.team3);
+  const teamKey = (team: number) => (team === 0 ? 'team1' : team === 1 ? 'team2' : 'team3');
+  const seatsForTeam = (team: number) =>
+    view.teamOf.flatMap((mapped, seat) => (mapped === team ? [seat as SeatId] : []));
   const action =
     view.phase === 'handComplete' ? (
       <UiButton
@@ -206,10 +246,15 @@ export function HandResultScreen({
         onPress={onNextHand}
       />
     ) : (
-      <UiButton label={t(language, 'playAgain')} onPress={onPlayAgain} />
+      <UiButton
+        label={playAgainReady ? t(language, 'youAreReady') : t(language, 'playAgain')}
+        disabled={playAgainReady}
+        onPress={onPlayAgain}
+      />
     );
 
   return (
+    <>
     <LandscapeFrame
       title={matchOver ? t(language, 'matchOver') : t(language, 'handOver')}
       backLabel={t(language, 'backToMenu')}
@@ -217,22 +262,55 @@ export function HandResultScreen({
       action={action}
     >
       <View style={styles.page}>
-        <Text style={styles.meta} numberOfLines={1}>
-          {matchOver ? winnerText(view, language, localSeat) : t(language, 'target', { score: view.targetScore })}
+        <Text style={styles.meta} numberOfLines={2}>
+          {matchOver && specialVictorySeat !== null
+            ? t(language, 'chaosLastManWin')
+            : matchOver
+              ? winnerText(view, language, localSeat)
+              : t(language, 'target', { score: view.targetScore })}
           {waitingFor ? `  ·  ${waitingFor}` : ''}
         </Text>
+        {matchOver && specialVictorySeat !== null ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {winnerText(view, language, localSeat)}
+          </Text>
+        ) : null}
+        {matchOver ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {t(language, 'seriesScore', {
+              left: series?.teamWins[0] ?? 0,
+              right: series?.teamWins[1] ?? 0,
+            })}
+            {teams.team2 !== undefined ? `–${series?.teamWins[2] ?? 0}` : ''}
+            {'  ·  '}
+            {t(language, 'seriesMatch')} {teams.team0}–{teams.team1}
+            {teams.team2 !== undefined ? `–${teams.team2}` : ''}
+          </Text>
+        ) : teams.team2 !== undefined ? (
+          <Text style={styles.meta} numberOfLines={1}>
+            {teams.team0}–{teams.team1}–{teams.team2}  ·  {t(language, 'target', { score: view.targetScore })}
+          </Text>
+        ) : null}
+        {chaosActive || view.mode === 'super' ? (
+          <UiButton
+            label={t(language, chaosActive ? 'chaosBookTitle' : 'superBookTitle')}
+            variant="ghost"
+            onPress={() => setBookOpen(true)}
+            style={styles.bookBtn}
+          />
+        ) : null}
         <View style={styles.board}>
           {teamOrder.map((team) => (
             <TeamCard
               key={team}
               label={
                 team === yourTeam
-                  ? `${t(language, team === 0 ? 'team1' : 'team2')} · ${t(language, 'you')}`
-                  : t(language, team === 0 ? 'team1' : 'team2')
+                  ? `${t(language, teamKey(team))} · ${t(language, 'you')}`
+                  : t(language, teamKey(team))
               }
-              score={team === 0 ? teams.team0 : teams.team1}
-              color={team === 0 ? colors.team1 : colors.team2}
-              seats={TEAM_SEATS[team]!}
+              score={teamScore(team)}
+              color={teamColor(team)}
+              seats={seatsForTeam(team)}
               view={view}
               language={language}
               localSeat={localSeat}
@@ -240,11 +318,24 @@ export function HandResultScreen({
               names={names}
               roomSeats={roomSeats}
               onToggleMute={onToggleMute}
+              seriesWins={matchOver ? series?.seatWins : undefined}
             />
           ))}
         </View>
       </View>
     </LandscapeFrame>
+    <ChaosBook
+      language={language}
+      visible={bookOpen && chaosActive}
+      ownAbilityId={chaosAbilityId}
+      onClose={() => setBookOpen(false)}
+    />
+    <SuperBook
+      language={language}
+      visible={bookOpen && view.mode === 'super' && !chaosActive}
+      onClose={() => setBookOpen(false)}
+    />
+    </>
   );
 }
 
@@ -254,6 +345,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     minHeight: 0,
     gap: spacing.xs,
+  },
+  bookBtn: {
+    alignSelf: 'center',
+    minHeight: 36,
+    paddingHorizontal: 14,
   },
   meta: {
     color: colors.goldHi,
@@ -265,9 +361,10 @@ const styles = StyleSheet.create({
   board: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'center',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 8,
     minHeight: 0,
   },
   teamCard: {
@@ -275,8 +372,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexBasis: 0,
     maxWidth: 400,
-    minWidth: 0,
-    overflow: 'hidden',
+    minWidth: 150,
+    overflow: 'visible',
     borderWidth: 1.5,
     borderRadius: 16,
     backgroundColor: 'rgba(8, 16, 18, 0.72)',
@@ -371,13 +468,18 @@ const styles = StyleSheet.create({
   rowYou: {
     backgroundColor: 'rgba(232, 197, 71, 0.12)',
   },
+  avatarWrap: {
+    width: 30,
+    height: 30,
+    flexShrink: 0,
+    overflow: 'visible',
+  },
   avatar: {
     width: 30,
     height: 30,
     borderRadius: 15,
     overflow: 'hidden',
     borderWidth: 2,
-    flexShrink: 0,
   },
   photo: {
     width: '100%',

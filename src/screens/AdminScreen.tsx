@@ -185,6 +185,7 @@ function GameCard({
             left: `${t(language, 'team1')} ${game.teamScores.team0}`,
             right: `${t(language, 'team2')} ${game.teamScores.team1}`,
           })}
+          {game.teamScores.team2 !== undefined ? ` · ${t(language, 'team3')} ${game.teamScores.team2}` : ''}
           {` · ${t(language, 'adminTarget', { score: game.targetScore })}`}
         </Text>
       ) : null}

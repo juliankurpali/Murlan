@@ -45,6 +45,33 @@ describe('combination detection', () => {
     expect(aceHigh).toMatchObject({ type: 'straight', sequence: 'high', strength: 14 });
   });
 
+  it('lays a scale in run order: 2 before 3, ace before 2 or after king', () => {
+    const aceLow = detectCombination(C('H3', 'D4', 'C5', 'SA', 'S2'), DEFAULT_RULES);
+    expect(isCombination(aceLow) && aceLow.cards.map((card) => card.id)).toEqual([
+      'SA',
+      'S2',
+      'H3',
+      'D4',
+      'C5',
+    ]);
+    const twoLow = detectCombination(C('H3', 'D4', 'C5', 'S6', 'S2'), DEFAULT_RULES);
+    expect(isCombination(twoLow) && twoLow.cards.map((card) => card.id)).toEqual([
+      'S2',
+      'H3',
+      'D4',
+      'C5',
+      'S6',
+    ]);
+    const aceHigh = detectCombination(C('SA', 'S10', 'HJ', 'DQ', 'CK'), DEFAULT_RULES);
+    expect(isCombination(aceHigh) && aceHigh.cards.map((card) => card.id)).toEqual([
+      'S10',
+      'HJ',
+      'DQ',
+      'CK',
+      'SA',
+    ]);
+  });
+
   it('rejects wrapped sequences such as Q-K-A-2-3', () => {
     expect(
       isCombination(detectCombination(C('SQ', 'HK', 'DA', 'C2', 'S3'), DEFAULT_RULES)),

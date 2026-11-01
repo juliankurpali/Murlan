@@ -1,19 +1,17 @@
 import { compareCards, sortHand } from '../cards/strength';
-import { BLACK_JOKER_ID, RED_JOKER_ID } from '../cards/types';
 import { Card } from '../cards/types';
+import { cloneHands } from './deal';
 import { CardExchangeResult, PendingExchange, SeatId } from './types';
-
-function cloneHands(hands: [Card[], Card[], Card[], Card[]]): [Card[], Card[], Card[], Card[]] {
-  return [hands[0].slice(), hands[1].slice(), hands[2].slice(), hands[3].slice()];
-}
 
 function takeHighest(hand: Card[]): Card {
   return [...hand].sort(compareCards)[hand.length - 1]!;
 }
 
 export function hasBothJokers(hand: Card[]): boolean {
-  const ids = new Set(hand.map((card) => card.id));
-  return ids.has(BLACK_JOKER_ID) && ids.has(RED_JOKER_ID);
+  const colors = new Set(
+    hand.flatMap((card) => (card.kind === 'joker' ? [card.color] : [])),
+  );
+  return colors.has('black') && colors.has('red');
 }
 
 /**
@@ -28,22 +26,24 @@ export function defaultReturnCard(hand: Card[], receivedId: string): Card {
   return sortHand(source)[0]!;
 }
 
-export function lastPlaceSeat(finishOrder: SeatId[]): SeatId | null {
-  const leftover = ([0, 1, 2, 3] as SeatId[]).filter((seat) => !finishOrder.includes(seat));
+export function lastPlaceSeat(finishOrder: SeatId[], seatCount = 4): SeatId | null {
+  const leftover = Array.from({ length: seatCount }, (_, index) => index as SeatId).filter(
+    (seat) => !finishOrder.includes(seat),
+  );
   if (leftover.length === 1) {
     return leftover[0]!;
   }
-  if (finishOrder.length >= 4) {
-    return finishOrder[3] ?? null;
+  if (finishOrder.length >= seatCount) {
+    return finishOrder[seatCount - 1] ?? null;
   }
   return leftover[leftover.length - 1] ?? null;
 }
 
 export function beginCardExchange(
-  hands: [Card[], Card[], Card[], Card[]],
+  hands: Card[][],
   firstSeat: SeatId,
   lastSeat: SeatId,
-): { hands: [Card[], Card[], Card[], Card[]]; givenToFirst: Card; pending: PendingExchange } | null {
+): { hands: Card[][]; givenToFirst: Card; pending: PendingExchange } | null {
   if (hands[lastSeat].length === 0 || hands[firstSeat].length === 0) {
     return null;
   }
@@ -59,10 +59,10 @@ export function beginCardExchange(
 }
 
 export function finishCardExchange(
-  hands: [Card[], Card[], Card[], Card[]],
+  hands: Card[][],
   pending: PendingExchange,
   returnedToLast: Card,
-): { hands: [Card[], Card[], Card[], Card[]]; exchange: CardExchangeResult } {
+): { hands: Card[][]; exchange: CardExchangeResult } {
   const next = cloneHands(hands);
   next[pending.firstSeat] = next[pending.firstSeat].filter((card) => card.id !== returnedToLast.id);
   next[pending.lastSeat] = [...next[pending.lastSeat], returnedToLast];
@@ -79,7 +79,7 @@ export function finishCardExchange(
 }
 
 export function applyCardExchange(
-  hands: [Card[], Card[], Card[], Card[]],
+  hands: Card[][],
   options: {
     enabled: boolean;
     firstSeat: SeatId | null;
@@ -88,7 +88,7 @@ export function applyCardExchange(
     returnedCard?: Card;
   },
 ): {
-  hands: [Card[], Card[], Card[], Card[]];
+  hands: Card[][];
   exchange: CardExchangeResult | null;
   pending: PendingExchange | null;
 } {

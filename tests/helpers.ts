@@ -19,18 +19,19 @@ export function card(id: string): Card {
   return C(id)[0]!;
 }
 
-export function emptyHands(): [Card[], Card[], Card[], Card[]] {
+export function emptyHands(): Card[][] {
   return [[], [], [], []];
 }
 
 export function createPlayingState(
   overrides: Partial<GameState> & {
-    hands: [Card[], Card[], Card[], Card[]];
+    hands: Card[][];
     currentSeat?: SeatId;
     rules?: RulesConfig;
   },
 ): GameState {
   const currentSeat = overrides.currentSeat ?? 0;
+  const hands = overrides.hands;
   return {
     schemaVersion: 1,
     mode: '2v2',
@@ -49,7 +50,7 @@ export function createPlayingState(
       passedSinceLastPlay: [],
     },
     finishOrder: [],
-    scores: [0, 0, 0, 0],
+    scores: Array.from({ length: hands.length }, () => 0),
     targetScore: 21,
     phase: 'playing',
     history: [],
@@ -57,12 +58,14 @@ export function createPlayingState(
     lastHandPoints: null,
     lastExchange: null,
     pendingExchange: null,
+    teamOf: hands.length === 6 ? [0, 1, 2, 0, 1, 2] : [0, 1, 0, 1],
+    undealt: [],
     ...overrides,
-    hands: overrides.hands,
+    hands,
   };
 }
 
-export function dealtFromSeed(seed: number): [Card[], Card[], Card[], Card[]] {
+export function dealtFromSeed(seed: number): Card[][] {
   const deck = shuffleDeck(createDeck(), createSeededRandom(seed));
   return dealCards(deck, 0);
 }

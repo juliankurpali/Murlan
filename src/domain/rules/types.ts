@@ -10,7 +10,9 @@ export type RulesConfig = {
   cardExchangeEnabled: boolean;
   targetScore: number;
   tieTargetIncrement: number;
-  pointsByFinishOrder: [number, number, number, number];
+  pointsByFinishOrder: number[];
+  /** Super Murlan: winner must also lead by this many points. Classic: 0. */
+  minimumWinningLead: number;
   allowReentryAfterPass: boolean;
   /** Who leads later hands when exchange is disabled. Default: previous first finisher. */
   laterHandOpener: LaterHandOpener;

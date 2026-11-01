@@ -31,6 +31,7 @@ export const colors = {
   glass: 'rgba(12, 22, 28, 0.92)',
   team1: '#e8c547',
   team2: '#e05b4c',
+  team3: '#5ec8c5',
 };
 
 export const fonts = {
@@ -61,15 +62,25 @@ export const motion = {
   botPlayMs: 1200,
   botPassMs: 700,
   humanTurnMs: 20000,
-  handResultMs: 1700,
-  flightMs: 480,
+  handResultMs: 2300,
+  flightMs: 860,
   dealMs: 1100,
-  staggerMs: 40,
+  staggerMs: 70,
   trickMs: 280,
   nativeDriver: Platform.OS !== 'web',
 };
 
-export const seatToken = ['#e8c547', '#e05b4c', '#e8c547', '#e05b4c'] as const;
+export const seatToken = ['#e8c547', '#e05b4c', '#5ec8c5', '#e8c547', '#e05b4c', '#5ec8c5'] as const;
+
+export function teamToken(team: number): string {
+  if (team === 1) {
+    return colors.team2;
+  }
+  if (team === 2) {
+    return colors.team3;
+  }
+  return colors.team1;
+}
 
 export function ensureWebFonts() {
   if (Platform.OS !== 'web' || typeof document === 'undefined') {

@@ -1,3 +1,4 @@
+import { MatchMode } from '../domain';
 import { apiRoots } from '../online/relayUrl';
 import {
   AdminSnapshot,
@@ -170,7 +171,7 @@ export async function respondSwitch(gameId: string, fromId: string, accept: bool
   });
 }
 
-export async function inviteToGame(gameId: string, username: string, team?: 0 | 1) {
+export async function inviteToGame(gameId: string, username: string, team?: 0 | 1 | 2) {
   return request(`/v1/games/${gameId}/invite`, { method: 'POST', body: JSON.stringify({ username, team }) });
 }
 
@@ -178,8 +179,22 @@ export async function fillGameBots(gameId: string) {
   return request<{ game: GameSummary }>(`/v1/games/${gameId}/bots`, { method: 'POST' });
 }
 
-export async function startGame(gameId: string): Promise<{ game: GameSummary; table: TablePayload | null }> {
-  return request(`/v1/games/${gameId}/start`, { method: 'POST' });
+export async function startGame(
+  gameId: string,
+  mode?: MatchMode,
+): Promise<{ game: GameSummary; table: TablePayload | null }> {
+  return request(`/v1/games/${gameId}/start`, {
+    method: 'POST',
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export async function setGameMode(gameId: string, mode: MatchMode): Promise<GameSummary> {
+  const result = await request<{ game: GameSummary }>(`/v1/games/${gameId}/mode`, {
+    method: 'POST',
+    body: JSON.stringify({ mode }),
+  });
+  return result.game;
 }
 
 export async function setLobbyReady(gameId: string, ready: boolean) {

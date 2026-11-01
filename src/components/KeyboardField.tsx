@@ -39,6 +39,7 @@ type Props = Pick<
   accessory?: ReactNode;
   doneLabel?: string;
   label?: string;
+  onDone?: () => void;
 };
 
 function masked(value: string, secure: boolean | undefined): string {
@@ -56,7 +57,9 @@ export function KeyboardField({
   accessory,
   doneLabel,
   label,
+  onDone,
   autoFocus = false,
+  autoCapitalize,
   secureTextEntry,
   style,
   onFocus,
@@ -72,6 +75,15 @@ export function KeyboardField({
   const keyboardUp =
     frame.inset > 20 || (frame.height > 0 && frame.height < 320) || (focused && frame.height > 0 && frame.height < frame.width);
   const showBar = Platform.OS === 'web' && focused && keyboardUp;
+  const holdFocus = (event: { preventDefault?: () => void }) => {
+    event.preventDefault?.();
+  };
+  const finish = () => {
+    onDone?.();
+    Keyboard.dismiss();
+    inputRef.current?.blur();
+    setFocused(false);
+  };
 
   return (
     <>
@@ -79,7 +91,10 @@ export function KeyboardField({
         {...inputProps}
         ref={inputRef}
         value={value}
-        onChangeText={onChangeText}
+        autoCapitalize={autoCapitalize}
+        onChangeText={(text) => {
+          onChangeText?.(autoCapitalize === 'characters' ? text.toUpperCase() : text);
+        }}
         placeholder={placeholder}
         placeholderTextColor={placeholderTextColor}
         autoFocus={autoFocus}
@@ -124,15 +139,21 @@ export function KeyboardField({
                     {mirror}
                   </Text>
                 </Pressable>
-                {accessory}
+                {accessory ? (
+                  <View
+                    onStartShouldSetResponder={() => true}
+                    // @ts-expect-error RN web: keep the field focused until the tap fires.
+                    onMouseDown={holdFocus}
+                  >
+                    {accessory}
+                  </View>
+                ) : null}
                 {doneLabel ? (
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => {
-                      Keyboard.dismiss();
-                      inputRef.current?.blur();
-                      setFocused(false);
-                    }}
+                    onPress={finish}
+                    // @ts-expect-error RN web: keep the field focused until the tap fires.
+                    onMouseDown={holdFocus}
                     style={styles.done}
                   >
                     <Text style={styles.doneLabel}>{doneLabel}</Text>

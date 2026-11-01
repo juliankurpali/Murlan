@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Animated, Easing, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ConnectionState } from '../online/lifecycle';
 import { colors, fonts, motion } from '../theme';
 import { PlayerAvatar } from './PlayerAvatar';
 import { VoiceMic } from './VoiceMic';
+import { WinnerCrown, WinFireworks } from './WinFireworks';
 
 type Props = {
   name: string;
@@ -34,6 +35,17 @@ type Props = {
   turnToken?: string;
   place?: number | null;
   placeLabel?: string | null;
+  abilityMark?: ReactNode;
+  frozen?: boolean;
+  selectable?: boolean;
+  onPress?: () => void;
+  gift?: {
+    disabled?: boolean;
+    selected?: boolean;
+    label: string;
+    onPress: () => void;
+  } | null;
+  celebrateKey?: string | null;
 };
 
 export function SeatPortrait({
@@ -58,6 +70,12 @@ export function SeatPortrait({
   turnToken = '',
   place = null,
   placeLabel = null,
+  abilityMark = null,
+  frozen = false,
+  selectable = false,
+  onPress,
+  gift = null,
+  celebrateKey = null,
 }: Props) {
   const ring = size + 4;
   const fill = useRef(new Animated.Value(1)).current;
@@ -146,13 +164,15 @@ export function SeatPortrait({
     return () => loop.stop();
   }, [lit, pulse]);
 
-  return (
+  const body = (
     <Animated.View
       style={[
         styles.chip,
         (passed || dimmed) && !isTurn && !place && styles.faded,
         spotlight && !isTurn && styles.spotlight,
         isTurn && styles.turnGlow,
+        frozen && styles.frozen,
+        selectable && styles.selectable,
         lit &&
           Platform.OS !== 'web' && {
             opacity: pulse.interpolate({ inputRange: [0.45, 1], outputRange: [0.9, 1] }),
@@ -195,6 +215,9 @@ export function SeatPortrait({
             <PlayerAvatar size={size - 4} accent={seatAccent} tone={tone} />
           )}
         </View>
+        {abilityMark ? <View style={styles.ability}>{abilityMark}</View> : null}
+        {place === 1 ? <WinnerCrown /> : null}
+        {celebrateKey ? <WinFireworks burstKey={celebrateKey} accent={seatAccent} /> : null}
       </View>
       <View style={styles.meta}>
         {timerAbove ? timer : null}
@@ -209,14 +232,38 @@ export function SeatPortrait({
           ) : null}
         </View>
         {timerAbove ? null : timer}
-        {teamLabel ? (
-          <Text style={[styles.team, { color: seatAccent }]} numberOfLines={1}>
-            {teamLabel}
-          </Text>
-        ) : turnLabel && !isTurn ? (
-          <Text style={styles.turnMark} numberOfLines={1}>
-            {turnLabel}
-          </Text>
+        {teamLabel || gift || (turnLabel && !isTurn) ? (
+          <View style={styles.teamRow}>
+            {teamLabel ? (
+              <Text style={[styles.team, { color: seatAccent }]} numberOfLines={1}>
+                {teamLabel}
+              </Text>
+            ) : turnLabel && !isTurn ? (
+              <Text style={styles.turnMark} numberOfLines={1}>
+                {turnLabel}
+              </Text>
+            ) : null}
+            {gift ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={gift.label}
+                accessibilityState={{ disabled: Boolean(gift.disabled), selected: Boolean(gift.selected) }}
+                disabled={gift.disabled}
+                hitSlop={6}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  gift.onPress();
+                }}
+                style={[
+                  styles.gift,
+                  gift.selected && styles.giftOn,
+                  gift.disabled && styles.giftOff,
+                ]}
+              >
+                <Text style={styles.giftMark}>🎁</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         {connectionLabel ? (
           <Text style={styles.link} numberOfLines={1}>
@@ -244,6 +291,14 @@ export function SeatPortrait({
       ) : null}
     </Animated.View>
   );
+  if (onPress) {
+    return (
+      <Pressable accessibilityRole={gift ? 'none' : 'button'} onPress={onPress}>
+        {body}
+      </Pressable>
+    );
+  }
+  return body;
 }
 
 const styles = StyleSheet.create({
@@ -257,6 +312,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(8, 18, 16, 0.78)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'visible',
   },
   spotlight: {
     borderColor: colors.goldHi,
@@ -370,15 +426,58 @@ const styles = StyleSheet.create({
   barUrgent: {
     backgroundColor: colors.danger,
   },
+  teamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 1,
+  },
   team: {
     fontSize: 10,
     fontWeight: '700',
     fontFamily: fonts.sans,
+    flexShrink: 1,
+  },
+  gift: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(8, 16, 18, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.45)',
+  },
+  giftOn: {
+    borderColor: '#f6e7a2',
+    backgroundColor: 'rgba(58, 44, 6, 0.96)',
+  },
+  giftOff: {
+    opacity: 0.4,
+  },
+  giftMark: {
+    fontSize: 11,
+    lineHeight: 14,
+    textAlign: 'center',
   },
   lastPlayed: {
     shadowColor: colors.gold,
     shadowOpacity: 0.55,
     shadowRadius: 8,
+  },
+  frozen: {
+    borderColor: '#7ec8ff',
+    backgroundColor: 'rgba(20, 48, 72, 0.92)',
+  },
+  selectable: {
+    borderColor: colors.goldHi,
+    borderWidth: 1.5,
+  },
+  ability: {
+    position: 'absolute',
+    right: -4,
+    bottom: -2,
+    zIndex: 3,
   },
   link: {
     color: colors.gold,

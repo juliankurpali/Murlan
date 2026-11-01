@@ -1,4 +1,6 @@
+import { ChaosAbilityId, SeatId } from '../domain';
 import { Friendship, GameSummary, PlatformNotice, PublicPlayer, TablePayload } from '../platform/types';
+import { ReactionEvent, ReactionId, ReactionReject } from '../reactions';
 import { ChatMessage } from './chat';
 import { HEARTBEAT_MS } from './lifecycle';
 import { ClientMessage, ServerMessage, toGameRoom } from './protocol';
@@ -23,6 +25,8 @@ type Handlers = {
   onVoice?: (frame: VoiceFrame) => void;
   onChat?: (message: ChatMessage) => void;
   onChatHistory?: (messages: ChatMessage[]) => void;
+  onReaction?: (event: ReactionEvent) => void;
+  onReactionDenied?: (denied: { requestId: string; reason: ReactionReject['reason']; retryAfterMs?: number }) => void;
   onEnded?: (gameId: string, reason?: 'admin' | 'empty', code?: string) => void;
   onError?: (message: string) => void;
   onStatus?: (status: NetStatus) => void;
@@ -142,6 +146,9 @@ function handle(message: ServerMessage) {
       legalCardIds: message.legalCardIds,
       humanTurn: message.humanTurn,
       nextHandReady: message.nextHandReady ?? [],
+      playAgainReady: message.playAgainReady ?? [],
+      series: message.series,
+      chaos: message.chaos ?? null,
     });
     return;
   }
@@ -157,6 +164,28 @@ function handle(message: ServerMessage) {
   }
   if (message.t === 'chatHistory') {
     handlers.onChatHistory?.(message.messages);
+    return;
+  }
+  if (message.t === 'reaction') {
+    handlers.onReaction?.({
+      eventId: message.eventId,
+      roomId: message.roomId,
+      senderPlayerId: message.senderPlayerId,
+      senderSeat: message.senderSeat,
+      targetPlayerId: message.targetPlayerId,
+      targetSeat: message.targetSeat,
+      reactionId: message.reactionId,
+      requestId: message.requestId,
+      serverTimestamp: message.serverTimestamp,
+    });
+    return;
+  }
+  if (message.t === 'reactionDenied') {
+    handlers.onReactionDenied?.({
+      requestId: message.requestId,
+      reason: message.reason as ReactionReject['reason'],
+      retryAfterMs: message.retryAfterMs,
+    });
     return;
   }
   if (message.t === 'ended') {
@@ -353,11 +382,26 @@ export function sendAway() {
 }
 
 export function sendIntent(
-  kind: 'play' | 'pass' | 'exchange' | 'nextHand',
-  payload?: { cards?: string[]; cardId?: string },
+  kind: 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability',
+  payload?: {
+    cards?: string[];
+    cardId?: string;
+    intoCardId?: string;
+    abilityId?: ChaosAbilityId;
+    targetSeat?: SeatId;
+  },
 ) {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  send({ t: 'intent', id, kind, cards: payload?.cards, cardId: payload?.cardId });
+  send({
+    t: 'intent',
+    id,
+    kind,
+    cards: payload?.cards,
+    cardId: payload?.cardId,
+    intoCardId: payload?.intoCardId,
+    abilityId: payload?.abilityId,
+    targetSeat: payload?.targetSeat,
+  });
 }
 
 export function sendMute(muted: boolean) {
@@ -378,6 +422,11 @@ export function sendVoice(frame: Uint8Array) {
 
 export function sendChat(text: string) {
   send({ t: 'chat', text });
+}
+
+export function sendReaction(reactionId: ReactionId, targetPlayerId: string) {
+  const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  send({ t: 'reaction', requestId, reactionId, targetPlayerId });
 }
 
 export function currentRoomCode(): string | null {

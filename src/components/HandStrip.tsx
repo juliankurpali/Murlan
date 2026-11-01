@@ -31,7 +31,7 @@ export function HandStrip({
   const [boxW, setBoxW] = useState(0);
   const resolved = boxW > 0 ? fitHandCards(cards.length, boxW, cardMax) : fit;
   const mid = (cards.length - 1) / 2;
-  const tiltStep = 1.15;
+  const tiltStep = 0.8;
   return (
     <ScrollView
       horizontal
@@ -44,7 +44,7 @@ export function HandStrip({
         const selected = selectedIds.includes(card.id);
         const dimmed = legalIds ? !legalIds.has(card.id) && !selected : false;
         const tilt = (index - mid) * tiltStep;
-        const arc = Math.abs(index - mid) * 1.6;
+        const arc = Math.abs(index - mid) * 0.8;
         const last = index === cards.length - 1;
         const stride = last ? resolved.width : resolved.width - resolved.overlap;
         return (

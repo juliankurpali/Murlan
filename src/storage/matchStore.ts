@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppSettings, DEFAULT_SETTINGS, PersistedMatch } from '../application/types';
+import { AppSettings, clampHandSize, DEFAULT_SETTINGS, PersistedMatch } from '../application/types';
 import { GameState } from '../domain';
 import { MATCH_STORAGE_KEY, SETTINGS_STORAGE_KEY } from './keys';
 import { clearProfilePhoto, loadProfilePhoto } from './profilePhoto';
@@ -12,7 +12,7 @@ function isGameState(value: unknown): value is GameState {
   return (
     record.schemaVersion === 1 &&
     Array.isArray(record.hands) &&
-    record.hands.length === 4 &&
+    (record.hands.length === 4 || record.hands.length === 6) &&
     typeof record.mode === 'string' &&
     typeof record.phase === 'string'
   );
@@ -75,6 +75,7 @@ export async function loadSettings(): Promise<AppSettings> {
       music: parsed.music !== false,
       haptics: parsed.haptics !== false,
       voiceMode: parsed.voiceMode === 'clear' ? 'clear' : 'natural',
+      handSize: clampHandSize(parsed.handSize),
     };
   } catch {
     return { ...DEFAULT_SETTINGS, profileUri: photo };

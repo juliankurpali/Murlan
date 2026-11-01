@@ -9,10 +9,10 @@ import {
   FLIGHT_CARD,
   FLIGHT_CARD_PHONE,
   isPhoneViewport,
+  playOriginPoint,
   tableCenter,
   TableSize,
   visualOffset,
-  visualSeatPoint,
 } from './tableLayout';
 
 type Props = {
@@ -22,20 +22,30 @@ type Props = {
   localSeat?: SeatId;
   tableSize: TableSize | null;
   language: Language;
+  seatCount?: number;
   onLanded: (playKey: string) => void;
 };
 
-function startRotate(seat: SeatId): string {
-  if (seat === 1) {
+function startRotate(visual: SeatId, seatCount: number): string {
+  if (visual === 0) {
+    return '-8deg';
+  }
+  if (seatCount === 6) {
+    if (visual === 1 || visual === 2) {
+      return '-28deg';
+    }
+    if (visual === 4 || visual === 5) {
+      return '28deg';
+    }
+    return '10deg';
+  }
+  if (visual === 1) {
     return '-32deg';
   }
-  if (seat === 3) {
+  if (visual === 3) {
     return '32deg';
   }
-  if (seat === 2) {
-    return '16deg';
-  }
-  return '-10deg';
+  return '16deg';
 }
 
 function FlyingCard({
@@ -46,6 +56,7 @@ function FlyingCard({
   localSeat,
   tableSize,
   language,
+  seatCount,
   playKey,
   isLast,
   onLanded,
@@ -57,6 +68,7 @@ function FlyingCard({
   localSeat: SeatId;
   tableSize: TableSize;
   language: Language;
+  seatCount: number;
   playKey: string;
   isLast: boolean;
   onLanded: (playKey: string) => void;
@@ -64,13 +76,14 @@ function FlyingCard({
   const progress = useRef(new Animated.Value(0)).current;
   const landedRef = useRef(onLanded);
   landedRef.current = onLanded;
-  const origin = visualSeatPoint(fromSeat, localSeat, tableSize);
+  const origin = playOriginPoint(fromSeat, localSeat, tableSize, seatCount);
   const center = tableCenter(tableSize);
   const fan = fanSpread(index, count);
   const dim = isPhoneViewport(tableSize.width, tableSize.height) ? FLIGHT_CARD_PHONE : FLIGHT_CARD;
   const startX = origin.x - center.x;
   const startY = origin.y - center.y;
-  const midY = (startY + fan.y) / 2 - 42;
+  const midY = startY * 0.45 - 36;
+  const visual = visualOffset(fromSeat, localSeat, seatCount);
 
   useEffect(() => {
     progress.setValue(0);
@@ -78,7 +91,7 @@ function FlyingCard({
       toValue: 1,
       duration: motion.flightMs,
       delay: index * motion.staggerMs,
-      easing: Easing.bezier(0.14, 0.82, 0.22, 1),
+      easing: Easing.bezier(0.16, 0.84, 0.22, 1),
       useNativeDriver: motion.nativeDriver,
     });
     run.start(({ finished }) => {
@@ -87,7 +100,7 @@ function FlyingCard({
       }
     });
     return () => run.stop();
-  }, [playKey, fromSeat, index, isLast, progress]);
+  }, [playKey, fromSeat, index, isLast, progress, seatCount, localSeat]);
 
   return (
     <Animated.View
@@ -114,7 +127,7 @@ function FlyingCard({
             {
               rotate: progress.interpolate({
                 inputRange: [0, 1],
-                outputRange: [startRotate(visualOffset(fromSeat, localSeat)), `${fan.rotate}deg`],
+                outputRange: [startRotate(visual, seatCount), `${fan.rotate}deg`],
               }),
             },
             {
@@ -133,19 +146,28 @@ function FlyingCard({
         width={dim.width}
         height={dim.height}
         language={language}
+        sharedLayout={false}
         elevated
       />
     </Animated.View>
   );
 }
 
-export function PlayFlight({ playKey, cards, fromSeat, localSeat = 0, tableSize, language, onLanded }: Props) {
+export function PlayFlight({
+  playKey,
+  cards,
+  fromSeat,
+  localSeat = 0,
+  tableSize,
+  language,
+  seatCount = 4,
+  onLanded,
+}: Props) {
   if (!tableSize || tableSize.width < 8 || cards.length === 0) {
     return null;
   }
-
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={styles.layer}>
       {cards.map((card, index) => (
         <FlyingCard
           key={`${playKey}-${card.id}`}
@@ -156,6 +178,7 @@ export function PlayFlight({ playKey, cards, fromSeat, localSeat = 0, tableSize,
           localSeat={localSeat}
           tableSize={tableSize}
           language={language}
+          seatCount={seatCount}
           playKey={playKey}
           isLast={index === cards.length - 1}
           onLanded={onLanded}
@@ -166,6 +189,11 @@ export function PlayFlight({ playKey, cards, fromSeat, localSeat = 0, tableSize,
 }
 
 const styles = StyleSheet.create({
+  layer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 26,
+    elevation: 26,
+  },
   card: {
     position: 'absolute',
   },

@@ -5,6 +5,7 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { applyUserIntent, autoAct, connectedHumans, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
 import { sameSecret } from '../src/platform/identity';
 import { withAiLabel } from '../src/platform/ids';
+import { nextBotReactionDelay, occupantIdForSeat, occupantsOfSeats, pickBotReaction, ReactionService } from '../src/reactions';
 import { PlatformStore } from '../src/platform/store';
 import { PlatformGame, PlatformPlayer } from '../src/platform/types';
 import { decodeVoiceFrame, isVoiceFrame, stampVoiceSeat } from '../src/online/voiceFrame';
@@ -25,6 +26,8 @@ const store = DATABASE_URL
   : new PlatformStore(join(process.cwd(), 'server', 'data', 'platform.json'));
 const sockets = new Map<WebSocket, { playerId: string | null; gameId: string | null }>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
+const reactionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const reactions = new ReactionService();
 
 type Json = Record<string, unknown>;
 
@@ -167,7 +170,7 @@ function toRelayRoom(game: PlatformGame) {
     hostId: game.createdBy,
     started: game.status === 'playing',
     mode: game.mode,
-    seats: game.seats.map((seat) => {
+    seats: game.seats.map((seat, index) => {
       if (!seat.userId && !seat.isBot) {
         return null;
       }
@@ -183,7 +186,7 @@ function toRelayRoom(game: PlatformGame) {
         speaking: seat.speaking,
         voiceAvailable: seat.voiceAvailable,
         connection: seat.connection,
-        playerId: seat.userId,
+        playerId: occupantIdForSeat(game.id, index, seat.userId, seat.isBot),
       };
     }),
     pendingJoins: store.pendingJoins(game),
@@ -230,12 +233,83 @@ function broadcastGame(game: PlatformGame) {
   }
 }
 
+function stopBotReactions(gameId: string) {
+  const prev = reactionTimers.get(gameId);
+  if (prev) {
+    clearTimeout(prev);
+  }
+  reactionTimers.delete(gameId);
+}
+
+function fireBotReaction(game: PlatformGame) {
+  if (game.status !== 'playing' || !game.match) {
+    return;
+  }
+  if (game.match.phase !== 'playing' && game.match.phase !== 'exchanging') {
+    return;
+  }
+  const occupants = occupantsOfSeats(game.id, game.seats);
+  const botIds = game.seats.flatMap((seat, index) =>
+    seat.isBot ? [occupantIdForSeat(game.id, index, seat.userId, true)].filter((id): id is string => Boolean(id)) : [],
+  );
+  const pick = pickBotReaction(occupants, botIds);
+  if (!pick) {
+    return;
+  }
+  const result = reactions.submit({
+    now: Date.now(),
+    room: { id: game.id, status: game.status, occupants },
+    senderId: pick.senderId,
+    requestId: pick.requestId,
+    reactionId: pick.reactionId,
+    targetPlayerId: pick.targetPlayerId,
+  });
+  if (!result.ok) {
+    return;
+  }
+  for (const peer of gameSockets(game)) {
+    send(peer, { t: 'reaction', ...result.event });
+  }
+}
+
+function armBotReactions(game: PlatformGame) {
+  stopBotReactions(game.id);
+  if (game.status !== 'playing' || !game.match) {
+    return;
+  }
+  if (game.match.phase === 'handComplete' || game.match.phase === 'matchComplete') {
+    return;
+  }
+  if (!game.seats.some((seat) => seat.isBot)) {
+    return;
+  }
+  reactionTimers.set(
+    game.id,
+    setTimeout(() => {
+      const live = store.games.get(game.id);
+      if (!live) {
+        reactionTimers.delete(game.id);
+        return;
+      }
+      fireBotReaction(live);
+      armBotReactions(live);
+    }, nextBotReactionDelay()),
+  );
+}
+
+function ensureBotReactions(game: PlatformGame) {
+  if (!reactionTimers.has(game.id)) {
+    armBotReactions(game);
+  }
+}
+
 function stopGame(game: PlatformGame) {
   const prev = timers.get(game.id);
   if (prev) {
     clearTimeout(prev);
   }
   timers.delete(game.id);
+  stopBotReactions(game.id);
 }
 
 function notifyGameClosed(game: PlatformGame, reason?: 'admin' | 'empty') {
@@ -276,6 +350,7 @@ function schedule(game: PlatformGame) {
   if (!game.match || game.status !== 'playing') {
     return;
   }
+  ensureBotReactions(game);
   if (game.match.phase === 'handComplete' || game.match.phase === 'matchComplete') {
     if (game.match.phase === 'matchComplete') {
       store.recordResult(game);
@@ -479,7 +554,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
     }
     if (req.method === 'POST' && path === '/v1/games/join') {
       const payload = await body(req);
-      const team = payload.team === 0 || payload.team === 1 ? payload.team : undefined;
+      const team = payload.team === 0 || payload.team === 1 || payload.team === 2 ? payload.team : undefined;
       const seat = typeof payload.seat === 'number' ? payload.seat : undefined;
       const outcome = store.requestJoin(user, String(payload.code ?? ''), { team, seat });
       json(res, 200, { game: store.summary(outcome.game, user.id), pending: outcome.pending });
@@ -518,7 +593,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       }
       if (req.method === 'POST' && rest === 'join') {
         const payload = await body(req).catch(() => ({} as Json));
-        const team = payload.team === 0 || payload.team === 1 ? payload.team : undefined;
+        const team = payload.team === 0 || payload.team === 1 || payload.team === 2 ? payload.team : undefined;
         const seat = typeof payload.seat === 'number' ? payload.seat : undefined;
         const outcome = store.requestJoin(user, game.code, { team, seat });
         json(res, 200, { game: store.summary(outcome.game, user.id), pending: outcome.pending });
@@ -589,7 +664,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       }
       if (req.method === 'POST' && rest === 'invite') {
         const payload = await body(req);
-        const team = payload.team === 0 || payload.team === 1 ? payload.team : undefined;
+        const team = payload.team === 0 || payload.team === 1 || payload.team === 2 ? payload.team : undefined;
         const row = store.invite(user, game, String(payload.username ?? ''), team);
         const invited = store.players.get(row.toId);
         if (invited) {
@@ -600,12 +675,33 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
       }
       if (req.method === 'POST' && rest === 'bots') {
         store.assertHost(user, game);
-        store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+        store.fillBots(game, ['Leka', 'Drita', 'Gjergj', 'Bardh', 'Yllka']);
+        broadcastGame(game);
+        json(res, 200, { game: store.summary(game, user.id) });
+        return;
+      }
+      if (req.method === 'POST' && rest === 'mode') {
+        const payload = await body(req).catch(() => ({} as Json));
+        if (payload.mode === 'chaos') {
+          json(res, 200, { game: store.summary(game, user.id) });
+          return;
+        }
+        store.setMatchMode(
+          user,
+          game,
+          payload.mode === 'super' ? 'super' : '2v2',
+        );
         broadcastGame(game);
         json(res, 200, { game: store.summary(game, user.id) });
         return;
       }
       if (req.method === 'POST' && rest === 'start') {
+        const payload = await body(req).catch(() => ({} as Json));
+        if (payload.mode === '2v2' || payload.mode === 'super') {
+          store.setMatchMode(user, game, payload.mode);
+        } else if (game.mode === 'chaos') {
+          store.setMatchMode(user, game, '2v2');
+        }
         store.assertCanStart(user, game);
         startMatch(game);
         const closed = store.closeOpenJoins(game);
@@ -713,7 +809,7 @@ wss.on('connection', (ws, req) => {
       send(ws, { t: 'error', message: 'auth' });
       return;
     }
-    if (message.t !== 'ping' && !store.rateOk(`ws:${player.id}`, 80, 10_000)) {
+    if (message.t !== 'ping' && message.t !== 'reaction' && !store.rateOk(`ws:${player.id}`, 80, 10_000)) {
       send(ws, { t: 'error', message: 'rate-limit' });
       return;
     }
@@ -759,9 +855,15 @@ wss.on('connection', (ws, req) => {
       }
       try {
         applyUserIntent(game, player.id, {
-          kind: message.kind as 'play' | 'pass' | 'exchange' | 'nextHand',
+          kind: message.kind as 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability',
           cards: Array.isArray(message.cards) ? (message.cards as string[]) : undefined,
           cardId: typeof message.cardId === 'string' ? message.cardId : undefined,
+          intoCardId: typeof message.intoCardId === 'string' ? message.intoCardId : undefined,
+          abilityId: typeof message.abilityId === 'string' ? (message.abilityId as import('../src/domain').ChaosAbilityId) : undefined,
+          targetSeat:
+            message.targetSeat === 0 || message.targetSeat === 1 || message.targetSeat === 2 || message.targetSeat === 3
+              ? message.targetSeat
+              : undefined,
         });
         store.save();
         broadcastGame(game);
@@ -781,6 +883,34 @@ wss.on('connection', (ws, req) => {
         }
       } catch (error) {
         send(ws, { t: 'error', message: error instanceof Error ? error.message : 'chat' });
+      }
+      return;
+    }
+    if (message.t === 'reaction' && game) {
+      // Broadcast only. Do not write reactions to the store, chat, or disk.
+      const result = reactions.submit({
+        now: Date.now(),
+        room: {
+          id: game.id,
+          status: game.status,
+          occupants: occupantsOfSeats(game.id, game.seats),
+        },
+        senderId: player.id,
+        requestId: String(message.requestId ?? ''),
+        reactionId: String(message.reactionId ?? ''),
+        targetPlayerId: String(message.targetPlayerId ?? ''),
+      });
+      if (!result.ok) {
+        send(ws, {
+          t: 'reactionDenied',
+          requestId: String(message.requestId ?? ''),
+          reason: result.reason,
+          retryAfterMs: result.retryAfterMs,
+        });
+        return;
+      }
+      for (const peer of gameSockets(game)) {
+        send(peer, { t: 'reaction', ...result.event });
       }
       return;
     }

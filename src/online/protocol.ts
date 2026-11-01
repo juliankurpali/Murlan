@@ -1,8 +1,9 @@
-import { GameState, MatchMode, PublicMatchView, SeatId } from '../domain';
-import { Friendship, GameSummary, PlatformNotice, PublicPlayer } from '../platform/types';
+import { ChaosAbilityId, GameState, MatchMode, PublicChaosView, PublicMatchView, SeatId } from '../domain';
+import { Friendship, GameSummary, PlatformNotice, PublicPlayer, TableSeries } from '../platform/types';
+import { ReactionId } from '../reactions';
 import { ChatMessage } from './chat';
 import { ConnectionState } from './lifecycle';
-import { GameRoom, RoomSeat } from './room';
+import { emptyRoomSeat, GameRoom, RoomSeat, seatsForMode } from './room';
 
 export type RelaySeat = {
   name: string;
@@ -42,14 +43,18 @@ export type ClientMessage =
   | {
       t: 'intent';
       id?: string;
-      kind: 'play' | 'pass' | 'exchange' | 'nextHand';
+      kind: 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability';
       cards?: string[];
       cardId?: string;
+      intoCardId?: string;
+      abilityId?: ChaosAbilityId;
+      targetSeat?: SeatId;
     }
   | { t: 'mute'; muted: boolean }
   | { t: 'speaking'; on: boolean }
   | { t: 'voiceStatus'; available: boolean }
-  | { t: 'chat'; text: string };
+  | { t: 'chat'; text: string }
+  | { t: 'reaction'; requestId: string; reactionId: ReactionId; targetPlayerId: string };
 
 export type ServerMessage =
   | { t: 'hello'; id?: string }
@@ -58,41 +63,41 @@ export type ServerMessage =
   | { t: 'room'; room: RelayRoom }
   | { t: 'started'; mode: MatchMode }
   | { t: 'state'; match: GameState }
-  | { t: 'view'; gameId: string; code: string; seat: SeatId; view: PublicMatchView; legalCardIds: string[]; humanTurn: boolean; nextHandReady?: SeatId[] }
+  | { t: 'view'; gameId: string; code: string; seat: SeatId; view: PublicMatchView; legalCardIds: string[]; humanTurn: boolean; nextHandReady?: SeatId[]; playAgainReady?: SeatId[]; series?: TableSeries; chaos?: PublicChaosView | null }
   | { t: 'social'; me: PublicPlayer; friends: PublicPlayer[]; requests: Friendship[]; inbox: PlatformNotice[]; games: GameSummary[] }
   | {
       t: 'intent';
       seat: SeatId;
       id?: string;
-      kind: 'play' | 'pass' | 'exchange' | 'nextHand';
+      kind: 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability';
       cards?: string[];
       cardId?: string;
+      intoCardId?: string;
+      abilityId?: ChaosAbilityId;
+      targetSeat?: SeatId;
     }
   | { t: 'chat'; id: string; seat: SeatId; name: string; text: string; at: number }
   | { t: 'chatHistory'; messages: ChatMessage[] }
+  | {
+      t: 'reaction';
+      eventId: string;
+      roomId: string;
+      senderPlayerId: string;
+      senderSeat?: number;
+      targetPlayerId: string;
+      targetSeat?: number;
+      reactionId: ReactionId;
+      requestId: string;
+      serverTimestamp: number;
+    }
+  | { t: 'reactionDenied'; requestId: string; reason: string; retryAfterMs?: number }
   | { t: 'ended'; gameId: string; reason?: 'admin' | 'empty'; code?: string }
   | { t: 'error'; message: string };
 
-function emptySeatView(): RoomSeat {
-  return {
-    name: 'Empty',
-    ready: false,
-    lobbyReady: false,
-    isHost: false,
-    isBot: false,
-    isYou: false,
-    muted: true,
-    speaking: false,
-    voiceAvailable: false,
-    connection: 'abandoned',
-  };
-}
-
 export function toGameRoom(snapshot: RelayRoom, myId: string | null): GameRoom {
-  const seats: RoomSeat[] = [0, 1, 2, 3].map((index) => {
-    const seat = snapshot.seats[index];
+  const mapped: RoomSeat[] = snapshot.seats.map((seat) => {
     if (!seat) {
-      return emptySeatView();
+      return emptyRoomSeat();
     }
     return {
       name: seat.name,
@@ -105,6 +110,7 @@ export function toGameRoom(snapshot: RelayRoom, myId: string | null): GameRoom {
       speaking: seat.speaking,
       voiceAvailable: seat.voiceAvailable !== false,
       connection: seat.connection ?? 'connected',
+      playerId: seat.playerId ?? null,
     };
   });
   return {
@@ -113,7 +119,7 @@ export function toGameRoom(snapshot: RelayRoom, myId: string | null): GameRoom {
     host: snapshot.hostId === myId,
     started: snapshot.started,
     mode: snapshot.mode ?? '2v2',
-    seats,
+    seats: seatsForMode(snapshot.mode ?? '2v2', mapped),
     pendingJoins: snapshot.pendingJoins ?? [],
   };
 }

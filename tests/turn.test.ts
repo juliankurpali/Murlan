@@ -1,6 +1,7 @@
 import {
   applyPass,
   applyPlay,
+  currentTrickPlays,
   DEFAULT_RULES,
   isRuleError,
   legalMovesForSeat,
@@ -154,5 +155,34 @@ describe('turn, pass, and trick flow', () => {
     expect(keys.has('C3,D3,H3,S3')).toBe(true);
     expect(keys.has('C7,D6,H5,S4,S8')).toBe(true);
     expect(moves.every((move) => move.length >= 1)).toBe(true);
+  });
+
+  it('keeps beaten plays until the trick is won', () => {
+    let state = createPlayingState({
+      hands: [C('S3', 'S9'), C('S5'), C('S7'), C('S8')],
+    });
+    const lead = applyPlay(state, 0, C('S3'));
+    if (isRuleError(lead)) {
+      throw new Error(lead.message);
+    }
+    state = lead;
+    const beat = applyPlay(state, 1, C('S5'));
+    if (isRuleError(beat)) {
+      throw new Error(beat.message);
+    }
+    state = beat;
+    expect(currentTrickPlays(state.history).map((play) => play.cards.map((card) => card.id))).toEqual([
+      ['S3'],
+      ['S5'],
+    ]);
+
+    for (const seat of [2, 3, 0] as const) {
+      const passed = applyPass(state, seat);
+      if (isRuleError(passed)) {
+        throw new Error(passed.message);
+      }
+      state = passed;
+    }
+    expect(currentTrickPlays(state.history)).toEqual([]);
   });
 });

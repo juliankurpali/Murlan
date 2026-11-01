@@ -1,5 +1,6 @@
 import { sortHand } from '../cards/strength';
 import { BotView, GameState, PublicMatchView, PublicPlayEvent, SeatId } from './types';
+import { defaultTeamOf } from './mode';
 import { teamScores } from './scoring';
 
 export function lastPlayedSeatFromHistory(history: PublicPlayEvent[]): SeatId | null {
@@ -12,17 +13,29 @@ export function lastPlayedSeatFromHistory(history: PublicPlayEvent[]): SeatId | 
   return null;
 }
 
+export type TrickPlayEvent = Extract<PublicPlayEvent, { kind: 'play' }>;
+
+export function currentTrickPlays(history: PublicPlayEvent[]): TrickPlayEvent[] {
+  const plays: TrickPlayEvent[] = [];
+  for (const event of history) {
+    if (event.kind === 'trickWon') {
+      plays.length = 0;
+      continue;
+    }
+    if (event.kind === 'play') {
+      plays.push(event);
+    }
+  }
+  return plays;
+}
+
 export function toPublicView(state: GameState, viewerSeat: SeatId): PublicMatchView {
+  const teamOf = state.teamOf ?? defaultTeamOf(state.mode);
   return {
     mode: state.mode,
     viewerSeat,
-    ownHand: sortHand(state.hands[viewerSeat]),
-    cardCounts: [
-      state.hands[0].length,
-      state.hands[1].length,
-      state.hands[2].length,
-      state.hands[3].length,
-    ],
+    ownHand: sortHand(state.hands[viewerSeat] ?? []),
+    cardCounts: state.hands.map((hand) => hand.length),
     currentSeat: state.currentSeat,
     trick: {
       leaderSeat: state.trick.leaderSeat,
@@ -31,7 +44,8 @@ export function toPublicView(state: GameState, viewerSeat: SeatId): PublicMatchV
       passedSinceLastPlay: [...state.trick.passedSinceLastPlay],
     },
     scores: [...state.scores],
-    teamScores: teamScores(state.scores),
+    teamScores: teamScores(state.scores, teamOf),
+    teamOf: [...teamOf],
     finishOrder: [...state.finishOrder],
     phase: state.phase,
     targetScore: state.targetScore,
@@ -41,6 +55,7 @@ export function toPublicView(state: GameState, viewerSeat: SeatId): PublicMatchV
     lastExchange: state.lastExchange ?? null,
     pendingExchange: state.pendingExchange ?? null,
     cardExchangeEnabled: state.rules.cardExchangeEnabled,
+    undealtCount: state.undealt?.length ?? 0,
     history: [...state.history],
   };
 }
@@ -48,13 +63,8 @@ export function toPublicView(state: GameState, viewerSeat: SeatId): PublicMatchV
 export function toBotView(state: GameState, seat: SeatId): BotView {
   return {
     seat,
-    hand: sortHand(state.hands[seat]),
-    cardCounts: [
-      state.hands[0].length,
-      state.hands[1].length,
-      state.hands[2].length,
-      state.hands[3].length,
-    ],
+    hand: sortHand(state.hands[seat] ?? []),
+    cardCounts: state.hands.map((hand) => hand.length),
     currentSeat: state.currentSeat,
     trick: {
       leaderSeat: state.trick.leaderSeat,

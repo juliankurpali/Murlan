@@ -16,7 +16,19 @@ export type AppSettings = {
   music: boolean;
   haptics: boolean;
   voiceMode: VoiceMode;
+  handSize: number;
 };
+
+export const HAND_SIZE_MIN = 0;
+export const HAND_SIZE_MAX = 4;
+export const DEFAULT_HAND_SIZE = 2;
+
+export function clampHandSize(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_HAND_SIZE;
+  }
+  return Math.max(HAND_SIZE_MIN, Math.min(HAND_SIZE_MAX, Math.round(value)));
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   language: 'en',
@@ -26,6 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   music: true,
   haptics: true,
   voiceMode: 'natural',
+  handSize: DEFAULT_HAND_SIZE,
 };
 
 export type PersistedMatch = {

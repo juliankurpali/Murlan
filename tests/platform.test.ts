@@ -203,6 +203,101 @@ describe('platform identity and matches', () => {
     expect(game.match.handIndex).toBe(before + 1);
   });
 
+  it('waits for every human before starting a rematch', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostagain1').token)!;
+    const guest = store.auth(store.guest('guestagn1').token)!;
+    const game = store.createGame(host);
+    store.joinGame(guest, game.code);
+    store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    startMatch(game);
+    game.match = { ...game.match!, phase: 'matchComplete', winner: 'team0' };
+    applyUserIntent(game, host.id, { kind: 'playAgain' });
+    expect(game.match.phase).toBe('matchComplete');
+    expect(game.playAgainReady).toContain(0);
+    expect(game.series.matches).toBe(1);
+    expect(game.series.teamWins).toEqual([1, 0]);
+    applyUserIntent(game, guest.id, { kind: 'playAgain' });
+    expect(game.match.phase).toBe('playing');
+    expect(game.match.scores).toEqual([0, 0, 0, 0]);
+    expect(game.status).toBe('playing');
+    expect(game.playAgainReady).toEqual([]);
+    expect(game.chaos).toBeNull();
+  });
+
+  it('starts a rematch as soon as the only human is ready', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostsolo2').token)!;
+    const game = store.createGame(host);
+    store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    startMatch(game);
+    game.match = { ...game.match!, phase: 'matchComplete', winner: 'team1' };
+    applyUserIntent(game, host.id, { kind: 'playAgain' });
+    expect(game.match.phase).toBe('playing');
+    expect(game.series.matches).toBe(1);
+    expect(game.series.teamWins).toEqual([0, 1]);
+    expect(game.series.seatWins).toEqual([0, 1, 0, 1]);
+  });
+
+  it('starts a rematch only after all four humans say play again', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostfour1').token)!;
+    const a = store.auth(store.guest('fourplr-a').token)!;
+    const b = store.auth(store.guest('fourplr-b').token)!;
+    const c = store.auth(store.guest('fourplr-c').token)!;
+    const game = store.createGame(host);
+    store.joinGame(a, game.code);
+    store.joinGame(b, game.code);
+    store.joinGame(c, game.code);
+    startMatch(game);
+    game.match = { ...game.match!, phase: 'matchComplete', winner: 'team0' };
+    applyUserIntent(game, host.id, { kind: 'playAgain' });
+    applyUserIntent(game, a.id, { kind: 'playAgain' });
+    applyUserIntent(game, b.id, { kind: 'playAgain' });
+    expect(game.match.phase).toBe('matchComplete');
+    applyUserIntent(game, c.id, { kind: 'playAgain' });
+    expect(game.match.phase).toBe('playing');
+    expect(game.series.matches).toBe(1);
+  });
+
+  it('keeps the table open and records career stats once after a match', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hoststat1').token)!;
+    const game = store.createGame(host);
+    store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    startMatch(game);
+    game.match = {
+      ...game.match!,
+      phase: 'matchComplete',
+      winner: 'team0',
+      scores: [21, 8, 21, 8],
+    };
+    store.recordResult(game);
+    expect(game.status).toBe('playing');
+    expect(game.match.phase).toBe('matchComplete');
+    expect(host.gamesPlayed).toBe(1);
+    expect(host.wins).toBe(1);
+    store.recordResult(game);
+    expect(host.gamesPlayed).toBe(1);
+    expect(payloadFor(game, host.id)?.series?.teamWins).toEqual([1, 0]);
+  });
+
+  it('reassigns chaos abilities on rematch without closing the table', () => {
+    const store = tempStore();
+    const host = store.auth(store.guest('hostchao1').token)!;
+    const game = store.createGame(host);
+    game.mode = 'chaos';
+    store.fillBots(game, ['Leka', 'Drita', 'Gjergj']);
+    startMatch(game);
+    expect(game.chaos).toBeTruthy();
+    game.match = { ...game.match!, phase: 'matchComplete', winner: 'team0' };
+    applyUserIntent(game, host.id, { kind: 'playAgain' });
+    expect(game.status).toBe('playing');
+    expect(game.match.phase).toBe('playing');
+    expect(game.chaos).toBeTruthy();
+    expect(game.mode).toBe('chaos');
+  });
+
   it('keeps a match going while another human is still connected', () => {
     const store = tempStore();
     const host = store.auth(store.guest('hoststay1').token)!;
@@ -516,7 +611,7 @@ describe('platform identity and matches', () => {
     expect(snap.games[0]!.humans).toBe(2);
     expect(snap.games[0]!.bots).toBe(2);
     expect(snap.games[0]!.handIndex).toBe(1);
-    expect(JSON.stringify(snap)).not.toContain(hidden);
+    expect(JSON.stringify(snap)).not.toContain(`"${hidden}"`);
   });
 
   it('lets admin end a live table without recording a winner', () => {

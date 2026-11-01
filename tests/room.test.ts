@@ -1,4 +1,4 @@
-import { createRoomCode, fillBots, guestsAreReady, hostRoom, isRoomCode, joinRoom, roomIsReady, tableSeat } from '../src/online/room';
+import { createRoomCode, fillBots, guestsAreReady, hostRoom, isRoomCode, joinRoom, normalizeRoomCode, roomIsReady, seatsForMode, tableSeat } from '../src/online/room';
 
 describe('online rooms', () => {
   it('creates a four-character host code from the safe alphabet', () => {
@@ -16,6 +16,12 @@ describe('online rooms', () => {
     expect(isRoomCode('a7k2')).toBe(true);
     expect(isRoomCode('I0O1')).toBe(false);
     expect(isRoomCode('ABC')).toBe(false);
+  });
+
+  it('treats typed lowercase join codes as uppercase', () => {
+    expect(normalizeRoomCode('a7k2')).toBe('A7K2');
+    expect(normalizeRoomCode(' h3p9 ')).toBe('H3P9');
+    expect(joinRoom('k4n8', 'Guest').code).toBe('K4N8');
   });
 
   it('fills empty seats with bots so the table can start', () => {
@@ -55,5 +61,21 @@ describe('online rooms', () => {
     expect(tableSeat(2, 'west')).toBe(3);
     expect(tableSeat(2, 'north')).toBe(0);
     expect(tableSeat(2, 'east')).toBe(1);
+  });
+
+  it('pads a classic lobby to six seats when Super is selected', () => {
+    const room = hostRoom('You');
+    const superSeats = seatsForMode('super', room.seats);
+    expect(superSeats).toHaveLength(6);
+    expect(superSeats.slice(4).every((seat) => !seat.ready)).toBe(true);
+    expect(seatsForMode('2v2', superSeats)).toHaveLength(4);
+  });
+
+  it('places six-player teammates opposite each other', () => {
+    expect(tableSeat(0, 'north', 6)).toBe(3);
+    expect(tableSeat(1, 'north', 6)).toBe(4);
+    expect(tableSeat(2, 'north', 6)).toBe(5);
+    expect(tableSeat(0, 'southwest', 6)).toBe(1);
+    expect(tableSeat(0, 'southeast', 6)).toBe(5);
   });
 });

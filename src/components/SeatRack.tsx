@@ -1,18 +1,18 @@
 import { useState, type ReactNode } from 'react';
-import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useStageDimensions } from './WebStage';
 import { SeatAppearance } from '../application/players';
-import { Language } from '../application/types';
+import { HAND_SIZE_MAX, HAND_SIZE_MIN, Language } from '../application/types';
 import { SeatId } from '../domain';
 import { ConnectionState } from '../online/lifecycle';
 import { seatName, t } from '../i18n';
 import { AnimatePresence, MotionView, cardSelectTransition } from '../motion';
-import { fonts, seatToken } from '../theme';
-import { isPhoneViewport, opponentFanFit } from './tableLayout';
+import { colors, fonts, teamToken } from '../theme';
+import { isPhoneViewport, OPPONENT_CARD, opponentFanFit, Point, TableSize } from './tableLayout';
 import { CardBack } from './CardBack';
 import { SeatPortrait } from './SeatPortrait';
 
-type Side = 'north' | 'east' | 'west' | 'south';
+type Side = 'north' | 'east' | 'west' | 'south' | 'northwest' | 'northeast' | 'southwest' | 'southeast';
 
 type Props = {
   seat: SeatId;
@@ -27,6 +27,7 @@ type Props = {
   appearance: SeatAppearance;
   dealing?: boolean;
   teamLabel: string | null;
+  team?: number;
   spotlight?: boolean;
   dimmed?: boolean;
   displayName?: string;
@@ -43,9 +44,66 @@ type Props = {
   placeLabel?: string | null;
   turnDurationMs?: number;
   turnToken?: string;
+  abilityMark?: ReactNode;
+  frozen?: boolean;
+  selectable?: boolean;
+  onPressSeat?: () => void;
+  gift?: {
+    disabled?: boolean;
+    selected?: boolean;
+    label: string;
+    onPress: () => void;
+  } | null;
+  handSize?: {
+    value: number;
+    onChange: (next: number) => void;
+  } | null;
+  celebrateKey?: string | null;
 };
 
-const CARD = { width: 26, height: 38 };
+const CARD = OPPONENT_CARD;
+
+export function OvalSeat({
+  point,
+  angle,
+  bounds,
+  children,
+}: {
+  point: Point;
+  angle: number;
+  bounds: TableSize;
+  children: ReactNode;
+}) {
+  const [box, setBox] = useState({ w: 128, h: 52 });
+  const onLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setBox((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+  };
+  const pad = 4;
+  const out = 10;
+  const left = Math.max(
+    pad,
+    Math.min(bounds.width - box.w - pad, point.x - box.w / 2 + Math.cos(angle) * out),
+  );
+  const top = Math.max(
+    pad,
+    Math.min(bounds.height - box.h - pad, point.y - box.h / 2 + Math.sin(angle) * out),
+  );
+  return (
+    <View
+      onLayout={onLayout}
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        left,
+        top,
+        zIndex: 3,
+      }}
+    >
+      {children}
+    </View>
+  );
+}
 
 export function SeatRack({
   seat,
@@ -60,6 +118,7 @@ export function SeatRack({
   appearance = { profileUri: null, tone: 0 },
   dealing = false,
   teamLabel,
+  team = 0,
   spotlight = false,
   dimmed = false,
   displayName,
@@ -69,24 +128,34 @@ export function SeatRack({
   placeLabel = null,
   turnDurationMs,
   turnToken,
+  abilityMark = null,
+  frozen = false,
+  selectable = false,
+  onPressSeat,
+  gift = null,
+  handSize = null,
+  celebrateKey = null,
 }: Props) {
   const { width, height } = useStageDimensions();
   const phone = isPhoneViewport(width, height);
   const shown = dealing || finished || side === 'south' ? 0 : Math.max(0, cardCount);
   const mid = (shown - 1) / 2;
   const name = displayName ?? seatName(language, seat);
-  const sideways = side === 'west' || side === 'east';
-  const maxSpan = side === 'north' ? (phone ? 148 : 190) : phone ? 132 : 168;
+  const leftSide = side === 'west' || side === 'northwest' || side === 'southwest';
+  const rightSide = side === 'east' || side === 'northeast' || side === 'southeast';
+  const sideways = leftSide || rightSide;
+  const maxSpan = side === 'north' ? (phone ? 92 : 110) : phone ? 72 : 88;
   const fit = opponentFanFit(shown, maxSpan, CARD.width);
-  const baseTilt = side === 'west' ? -90 : side === 'east' ? 90 : 180;
-  const towardPlayer = side === 'west' ? -1 : side === 'east' ? 1 : 0;
+  const baseTilt = leftSide ? -90 : rightSide ? 90 : 180;
+  const towardPlayer = leftSide ? -1 : rightSide ? 1 : 0;
+  const bow = sideways ? 0.55 : 0.4;
 
   const portrait = (
     <SeatPortrait
       name={name}
       profileUri={appearance.profileUri}
       tone={appearance.tone}
-      seatAccent={seatToken[seat]}
+      seatAccent={teamToken(team)}
       isTurn={isTurn}
       passed={passed}
       finished={finished}
@@ -103,6 +172,12 @@ export function SeatRack({
       timerAbove={side !== 'south'}
       place={place}
       placeLabel={placeLabel}
+      abilityMark={abilityMark}
+      frozen={frozen}
+      selectable={selectable}
+      onPress={onPressSeat}
+      gift={gift}
+      celebrateKey={celebrateKey}
     />
   );
 
@@ -126,8 +201,8 @@ export function SeatRack({
                 {
                   zIndex: index,
                   transform: sideways
-                    ? [{ translateX: towardPlayer * Math.abs(fromMid) * 1.6 }]
-                    : [{ translateY: -Math.abs(fromMid) * 1.1 }],
+                    ? [{ translateX: towardPlayer * Math.abs(fromMid) * bow }]
+                    : [{ translateY: -Math.abs(fromMid) * bow }],
                 },
               ]}
             >
@@ -153,14 +228,38 @@ export function SeatRack({
     </View>
   );
 
-  const identity = <View style={styles.identity}>{portrait}</View>;
+  const sizeControl =
+    handSize && !sideways ? (
+      <View style={styles.sizeDock} pointerEvents="box-none">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t(language, 'handBigger')}
+          disabled={handSize.value >= HAND_SIZE_MAX}
+          hitSlop={6}
+          onPress={() => handSize.onChange(handSize.value + 1)}
+          style={[styles.sizeBtn, handSize.value >= HAND_SIZE_MAX && styles.sizeBtnOff]}
+        >
+          <Text style={styles.sizeMark}>+</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t(language, 'handSmaller')}
+          disabled={handSize.value <= HAND_SIZE_MIN}
+          hitSlop={6}
+          onPress={() => handSize.onChange(handSize.value - 1)}
+          style={[styles.sizeBtn, handSize.value <= HAND_SIZE_MIN && styles.sizeBtnOff]}
+        >
+          <Text style={styles.sizeMark}>−</Text>
+        </Pressable>
+      </View>
+    ) : null;
 
-  const seatedIdentity =
-    side === 'west' || side === 'east' ? (
-      <RotatedSeatLayout degrees={side === 'west' ? -90 : 90}>{identity}</RotatedSeatLayout>
-    ) : (
-      identity
-    );
+  const identity = (
+    <View style={[styles.identity, sideways && styles.identitySide]}>
+      {portrait}
+      {sizeControl}
+    </View>
+  );
 
   return (
     <View
@@ -172,19 +271,19 @@ export function SeatRack({
         isTurn && styles.stackTurn,
       ]}
     >
-      {side === 'east' ? (
+      {rightSide ? (
         <>
           {cardsBlock}
-          {seatedIdentity}
+          {identity}
         </>
       ) : side === 'south' ? (
         <>
           {lastTag}
-          {seatedIdentity}
+          {identity}
         </>
       ) : (
         <>
-          {seatedIdentity}
+          {identity}
           {cardsBlock}
         </>
       )}
@@ -192,44 +291,58 @@ export function SeatRack({
   );
 }
 
-function RotatedSeatLayout({
-  degrees,
-  children,
-}: {
-  degrees: number;
-  children: ReactNode;
-}) {
-  const [box, setBox] = useState({ w: 112, h: 48 });
-
-  const onLayout = (event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    setBox((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }));
-  };
-
-  return (
-    <View style={[styles.rotatedSlot, { width: box.h, height: box.w }]}>
-      <View onLayout={onLayout} style={{ transform: [{ rotate: `${degrees}deg` }] }}>
-        {children}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   stack: {
     alignItems: 'center',
-    gap: 2,
+    gap: 1,
     overflow: 'visible',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 1,
   },
   identity: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
+    overflow: 'visible',
+    position: 'relative',
+  },
+  sizeDock: {
+    position: 'absolute',
+    left: '100%',
+    marginLeft: 4,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    gap: 4,
+    zIndex: 8,
+  },
+  sizeBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(8, 16, 18, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.5)',
+  },
+  sizeBtnOff: {
+    opacity: 0.35,
+  },
+  sizeMark: {
+    color: colors.goldHi,
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 18,
+    textAlign: 'center',
+    fontFamily: fonts.sans,
+  },
+  identitySide: {
+    flexDirection: 'row',
   },
   stackDim: {
     opacity: 0.55,
@@ -253,14 +366,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rotatedSlot: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
   cardsBlock: {
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
   },
   lastTag: {
     paddingHorizontal: 6,

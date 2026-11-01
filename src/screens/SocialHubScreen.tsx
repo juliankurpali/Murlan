@@ -5,7 +5,7 @@ import { KeyboardField } from '../components/KeyboardField';
 import { LandscapeFrame } from '../components/LandscapeFrame';
 import { UiButton } from '../components/UiButton';
 import { Friendship, GameSummary, PlatformNotice, PublicPlayer } from '../platform/types';
-import { isRoomCode } from '../online/room';
+import { isRoomCode, normalizeRoomCode } from '../online/room';
 import { NetStatus } from '../online/net';
 import { t } from '../i18n';
 import { colors, fonts, radius, spacing } from '../theme';
@@ -87,7 +87,7 @@ export function SocialHubScreen({
   const friendsBadge = requests.length > 0 || unread.length > 0;
 
   const join = () => {
-    const next = code.trim().toUpperCase();
+    const next = normalizeRoomCode(code);
     if (!isRoomCode(next)) {
       Alert.alert(t(language, 'joinRoom'), t(language, 'roomCodeHint'));
       return;
@@ -139,7 +139,7 @@ export function SocialHubScreen({
               placeholder="A7K2"
               placeholderTextColor={colors.muted}
               value={code}
-              onChangeText={setCode}
+              onChangeText={(value) => setCode(normalizeRoomCode(value))}
               onSubmitEditing={join}
               label={t(language, 'joinRoom')}
               doneLabel={t(language, 'ok')}

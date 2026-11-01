@@ -1,4 +1,4 @@
-import { Card, StandardCard, StandardRank } from '../cards/types';
+import { Card, isThreeOfSpades, StandardCard, StandardRank } from '../cards/types';
 import { RulesConfig } from '../rules/types';
 import { canBeat } from './beating';
 import { aceLowStraightRank, detectCombination, highStraightRank } from './combinations';
@@ -163,6 +163,7 @@ function generateAllCombinations(hand: Card[], rules: RulesConfig): Card[][] {
 
 export type LegalMoveContext = {
   mustIncludeCardId?: string;
+  mustIncludeThreeOfSpades?: boolean;
 };
 
 export function getLegalMoves(
@@ -177,6 +178,9 @@ export function getLegalMoves(
 
   return generated.filter((cards) => {
     if (requiredId && !cards.some((card) => card.id === requiredId)) {
+      return false;
+    }
+    if (context.mustIncludeThreeOfSpades && !cards.some(isThreeOfSpades)) {
       return false;
     }
     const detected = detectCombination(cards, rules);

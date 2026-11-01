@@ -1,5 +1,5 @@
 import { Card, StandardCard } from '../cards/types';
-import { cardStrength } from '../cards/strength';
+import { cardStrength, compareCards } from '../cards/strength';
 import { RulesConfig } from '../rules/types';
 import {
   Combination,
@@ -20,6 +20,33 @@ function uniqueIds(cards: Card[]): boolean {
   return new Set(cards.map((card) => card.id)).size === cards.length;
 }
 
+function straightDisplayRank(card: Card, kind: SequenceKind): number {
+  if (card.kind !== 'standard') {
+    return 99;
+  }
+  if (kind === 'aceLow') {
+    return aceLowStraightRank(card);
+  }
+  if (card.rank === 15) {
+    return 2;
+  }
+  return card.rank;
+}
+
+/** Scale order: 2 before 3. Ace is before 2 when low, or after K when high. */
+export function sortPlayCards(cards: Card[], sequence?: SequenceKind): Card[] {
+  if (!sequence) {
+    return [...cards].sort(compareCards);
+  }
+  return [...cards].sort((a, b) => {
+    const byRun = straightDisplayRank(a, sequence) - straightDisplayRank(b, sequence);
+    if (byRun !== 0) {
+      return byRun;
+    }
+    return compareCards(a, b);
+  });
+}
+
 function combo(
   type: Combination['type'],
   cards: Card[],
@@ -28,7 +55,7 @@ function combo(
 ): Combination {
   return {
     type,
-    cards: [...cards],
+    cards: sortPlayCards(cards, sequence),
     strength,
     length: cards.length,
     sequence,
