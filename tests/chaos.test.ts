@@ -262,6 +262,12 @@ describe('chaos abilities', () => {
       remainingUses: 1,
       consumed: false,
     };
+    game.chaos!.abilities[botSeat] = {
+      seat: botSeat,
+      abilityId: 'jokerKing',
+      remainingUses: 0,
+      consumed: true,
+    };
     applyUserIntent(game, host.id, { kind: 'ability', abilityId: 'freeze', targetSeat: botSeat });
     const guestView = payloadFor(game, guest.id)!;
     const row = guestView.chaos?.notices.find((notice) => notice.key === 'chaosFrozenPublic');
