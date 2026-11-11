@@ -1,6 +1,9 @@
 import { REACTION_IDS, type ReactionId } from './catalog';
 import type { ReactionOccupant } from './service';
 
+/** Offline/online bots do not send reactions while this is false. */
+export const BOT_REACTIONS_ENABLED = false;
+
 export const BOT_REACTION_MIN_MS = 8000;
 export const BOT_REACTION_MAX_MS = 18000;
 

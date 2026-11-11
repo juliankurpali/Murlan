@@ -19,6 +19,7 @@ import {
 } from './application';
 import {
   nextBotReactionDelay,
+  BOT_REACTIONS_ENABLED,
   pickBotReaction,
   REACTION_COOLDOWN_MS,
   REACTION_DURATION_MS,
@@ -737,6 +738,7 @@ export function MatchApp() {
   }, [turnKey, commitMatch, online, botSeats, localSeat]);
 
   const botReactLive =
+    BOT_REACTIONS_ENABLED &&
     !online &&
     session.screen === 'table' &&
     Boolean(session.match) &&

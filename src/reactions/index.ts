@@ -12,6 +12,7 @@ export {
 export {
   nextBotReactionDelay,
   pickBotReaction,
+  BOT_REACTIONS_ENABLED,
   BOT_REACTION_MAX_MS,
   BOT_REACTION_MIN_MS,
   type BotReactionPick,

@@ -5,7 +5,14 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { applyUserIntent, autoAct, connectedHumans, forceEndGame, parkPlayer, payloadFor, restorePlayer, startMatch, turnDelay } from '../src/platform/match';
 import { sameSecret } from '../src/platform/identity';
 import { withAiLabel } from '../src/platform/ids';
-import { nextBotReactionDelay, occupantIdForSeat, occupantsOfSeats, pickBotReaction, ReactionService } from '../src/reactions';
+import {
+  BOT_REACTIONS_ENABLED,
+  nextBotReactionDelay,
+  occupantIdForSeat,
+  occupantsOfSeats,
+  pickBotReaction,
+  ReactionService,
+} from '../src/reactions';
 import { PlatformStore } from '../src/platform/store';
 import { PlatformGame, PlatformPlayer } from '../src/platform/types';
 import { decodeVoiceFrame, isVoiceFrame, stampVoiceSeat } from '../src/online/voiceFrame';
@@ -274,6 +281,9 @@ function fireBotReaction(game: PlatformGame) {
 
 function armBotReactions(game: PlatformGame) {
   stopBotReactions(game.id);
+  if (!BOT_REACTIONS_ENABLED) {
+    return;
+  }
   if (game.status !== 'playing' || !game.match) {
     return;
   }
