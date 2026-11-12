@@ -26,6 +26,7 @@ type Props = {
   disabled?: boolean;
   tilt?: number;
   elevated?: boolean;
+  highlighted?: boolean;
   sharedLayout?: boolean;
   liftOnSelect?: boolean;
   hitWidth?: number;
@@ -63,6 +64,7 @@ export function CardFace({
   disabled = false,
   tilt = 0,
   elevated = false,
+  highlighted = false,
   sharedLayout = true,
   liftOnSelect = true,
   hitWidth,
@@ -98,6 +100,7 @@ export function CardFace({
     legal === true && selected && styles.legal,
     legal === false && selected && styles.illegal,
     elevated && styles.elevated,
+    highlighted && styles.highlighted,
   ];
 
   if (Platform.OS === 'web') {
@@ -200,6 +203,16 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 8 },
     elevation: 12,
+  },
+  highlighted: {
+    borderColor: colors.goldHi,
+    borderWidth: 2,
+    shadowColor: colors.goldHi,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 16,
+    backgroundColor: '#FFF8D6',
   },
   selected: {
     borderColor: colors.goldHi,

@@ -204,6 +204,7 @@ export const en = {
   botThinking: '{name} is playing',
   portraitHint: 'This table is built for landscape.',
   exchangeBanner: '{last} gave {given} to {first}; {first} returned {returned}.',
+  exchangeIncoming: '{last} gave you {given}. Choose a card to give back.',
   exchangeHint:
     'Next hand: last place gives their highest card to first place. First place chooses a card to give back. Last place then leads, unless they were dealt both jokers — then there is no exchange and first place leads.',
   exchangeChoose: 'Choose a card to give {name}',

@@ -16,6 +16,11 @@ describe('between-hand card exchange', () => {
     expect(lastPlaceSeat([0, 1, 2, 3])).toBe(3);
   });
 
+  it('uses first and last from a Super finish order', () => {
+    expect(lastPlaceSeat([4, 1, 0, 5, 2], 6)).toBe(3);
+    expect(lastPlaceSeat([4, 1, 0, 5, 2, 3], 6)).toBe(3);
+  });
+
   it('gives last place’s highest card to first place, who returns a 3–10 by default', () => {
     const { hands, exchange } = applyCardExchange(
       [C('S3', 'HK'), C('S4', 'S5'), C('S6', 'S7'), C('JR', 'S8')],
@@ -160,6 +165,56 @@ describe('between-hand card exchange', () => {
     } else {
       expect(next.currentSeat).toBe(3);
       expect(next.trick.leaderSeat).toBe(3);
+    }
+  });
+
+  it('exchanges between Super first and last after the next-hand deal', () => {
+    const state = createPlayingState({
+      mode: 'super',
+      phase: 'handComplete',
+      finishOrder: [4, 1, 0, 5, 2, 3],
+      hands: [C('S3'), C('S4'), C('S5'), C('S6'), C('S7'), C('S8')],
+      teamOf: [0, 1, 2, 0, 1, 2],
+      rules: {
+        flushEnabled: true,
+        flushBeatsBomb: true,
+        aceLowStraightEnabled: true,
+        aceHighStraightEnabled: true,
+        firstLeadMustContainThreeOfSpades: false,
+        cardExchangeEnabled: true,
+        targetScore: 150,
+        tieTargetIncrement: 10,
+        pointsByFinishOrder: [15, 12, 9, 6, 3, 1],
+        minimumWinningLead: 10,
+        allowReentryAfterPass: true,
+        laterHandOpener: 'previousFirstFinisher',
+        fourteenCardPolicy: 'dealOrder',
+        allowPassOnLead: false,
+      },
+    });
+    const next = startNextHand(state, state.rules, createSeededRandom(11), { awaitReturnChoice: true });
+    if (isRuleError(next)) {
+      throw new Error(next.message);
+    }
+    expect(next.hands).toHaveLength(6);
+    expect(next.undealt).toHaveLength(4);
+    expect(next.hands.flat().length + next.undealt.length).toBe(82);
+    if (next.pendingExchange) {
+      expect(next.pendingExchange.firstSeat).toBe(4);
+      expect(next.pendingExchange.lastSeat).toBe(3);
+      expect(next.phase).toBe('exchanging');
+      expect(next.currentSeat).toBe(4);
+      expect(next.hands[4]).toHaveLength(14);
+      expect(next.hands[3]).toHaveLength(12);
+      return;
+    }
+    expect(next.lastExchange).not.toBeNull();
+    expect(next.lastExchange?.firstSeat).toBe(4);
+    expect(next.lastExchange?.lastSeat).toBe(3);
+    if (next.lastExchange?.kind === 'skipped') {
+      expect(next.currentSeat).toBe(4);
+    } else {
+      expect(next.currentSeat).toBe(3);
     }
   });
 });

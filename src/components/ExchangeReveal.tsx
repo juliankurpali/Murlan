@@ -4,7 +4,7 @@ import { Language } from '../application/types';
 import { Card, CardExchangeResult } from '../domain';
 import { t } from '../i18n';
 import { AnimatePresence, MotionView } from '../motion';
-import { colors, motion } from '../theme';
+import { colors, fonts, motion } from '../theme';
 import { CardFace } from './CardFace';
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
   language: Language;
   visible: boolean;
   incomingOnly?: boolean;
+  caption?: string | null;
 };
 
 function SwapCards({
@@ -25,7 +26,7 @@ function SwapCards({
 }) {
   return (
     <>
-      <CardFace card={incoming} size="md" language={language} sharedLayout={false} elevated />
+      <CardFace card={incoming} size="md" language={language} sharedLayout={false} elevated highlighted />
       {outgoing ? (
         <>
           <View style={styles.swap} />
@@ -36,7 +37,13 @@ function SwapCards({
   );
 }
 
-export function ExchangeReveal({ exchange, language, visible, incomingOnly = false }: Props) {
+export function ExchangeReveal({
+  exchange,
+  language,
+  visible,
+  incomingOnly = false,
+  caption = null,
+}: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(16)).current;
   const swapKey =
@@ -76,13 +83,18 @@ export function ExchangeReveal({ exchange, language, visible, incomingOnly = fal
 
   const body =
     exchange.kind === 'skipped' ? (
-      <Text style={styles.skip}>{t(language, 'exchangeSkipped')}</Text>
+      <Text style={styles.skip}>{caption ?? t(language, 'exchangeSkipped')}</Text>
     ) : (
-      <SwapCards
-        incoming={exchange.givenToFirst}
-        outgoing={incomingOnly ? null : exchange.returnedToLast}
-        language={language}
-      />
+      <View style={styles.stack}>
+        {caption ? <Text style={styles.caption}>{caption}</Text> : null}
+        <View style={styles.cards}>
+          <SwapCards
+            incoming={exchange.givenToFirst}
+            outgoing={incomingOnly ? null : exchange.returnedToLast}
+            language={language}
+          />
+        </View>
+      </View>
     );
 
   if (Platform.OS === 'web') {
@@ -124,11 +136,32 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     zIndex: 20,
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: '16%',
+    paddingHorizontal: 16,
+  },
+  stack: {
+    alignItems: 'center',
+    gap: 10,
+    maxWidth: 360,
+  },
+  cards: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 14,
+  },
+  caption: {
+    color: colors.goldHi,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+    fontFamily: fonts.sans,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   swap: {
     width: 16,
@@ -146,6 +179,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
     textAlign: 'center',
-    maxWidth: 220,
+    maxWidth: 260,
+    fontFamily: fonts.sans,
   },
 });

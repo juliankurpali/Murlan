@@ -67,6 +67,8 @@ export const motion = {
   dealMs: 1100,
   staggerMs: 70,
   trickMs: 280,
+  exchangeRevealMs: 3200,
+  exchangeHighlightMs: 5000,
   nativeDriver: Platform.OS !== 'web',
 };
 

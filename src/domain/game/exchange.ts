@@ -26,17 +26,22 @@ export function defaultReturnCard(hand: Card[], receivedId: string): Card {
   return sortHand(source)[0]!;
 }
 
+/** Last place from the previous hand. Works for Classic (4) and Super (6). */
 export function lastPlaceSeat(finishOrder: SeatId[], seatCount = 4): SeatId | null {
+  if (finishOrder.length === 0) {
+    return null;
+  }
+  if (finishOrder.length >= seatCount) {
+    return finishOrder[seatCount - 1] ?? null;
+  }
   const leftover = Array.from({ length: seatCount }, (_, index) => index as SeatId).filter(
     (seat) => !finishOrder.includes(seat),
   );
   if (leftover.length === 1) {
     return leftover[0]!;
   }
-  if (finishOrder.length >= seatCount) {
-    return finishOrder[seatCount - 1] ?? null;
-  }
-  return leftover[leftover.length - 1] ?? null;
+  // Hand should already be complete, but keep a stable fallback.
+  return leftover[leftover.length - 1] ?? finishOrder[finishOrder.length - 1] ?? null;
 }
 
 export function beginCardExchange(

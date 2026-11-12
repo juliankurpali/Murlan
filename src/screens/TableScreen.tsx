@@ -8,6 +8,7 @@ import {
   ChaosAbilityId,
   Card,
   currentTrickPlays,
+  formatCardShort,
   lastPlayedSeatFromHistory,
   placeForSeat,
   PublicChaosView,
@@ -16,6 +17,7 @@ import {
 } from '../domain';
 import { ChatMessage } from '../online/chat';
 import { RoomSeat, tableSeat } from '../online/room';
+import { baseBotName } from '../platform/ids';
 import { ReactionEvent, ReactionId } from '../reactions';
 import { AbilityMark, ABILITY_GLYPH } from '../components/AbilityMark';
 import { ActionOrb } from '../components/ActionOrb';
@@ -214,14 +216,57 @@ export function TableScreen({
   const showExchange = Boolean(
     !dealing && view.lastExchange && exchangeKey && view.history.length === 0 && seenExchange !== exchangeKey,
   );
+  const tableName = (seat: SeatId): string => {
+    if (seat === localSeat) {
+      return t(language, 'you');
+    }
+    const occupant = roomSeats?.[seat];
+    if (occupant?.name) {
+      return baseBotName(occupant.name);
+    }
+    return baseBotName(seatName(language, seat));
+  };
+  const exchangeCaption =
+    view.lastExchange?.kind === 'swap'
+      ? t(language, 'exchangeBanner', {
+          last: tableName(view.lastExchange.lastSeat),
+          first: tableName(view.lastExchange.firstSeat),
+          given: formatCardShort(view.lastExchange.givenToFirst),
+          returned: formatCardShort(view.lastExchange.returnedToLast),
+        })
+      : view.lastExchange?.kind === 'skipped'
+        ? t(language, 'exchangeSkipped')
+        : null;
+  const receivedCardId =
+    exchanging && view.pendingExchange && view.pendingExchange.firstSeat === localSeat
+      ? view.pendingExchange.givenToFirst.id
+      : view.lastExchange?.kind === 'swap' && view.history.length === 0
+        ? view.lastExchange.firstSeat === localSeat
+          ? view.lastExchange.givenToFirst.id
+          : view.lastExchange.lastSeat === localSeat
+            ? view.lastExchange.returnedToLast.id
+            : null
+        : null;
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
+  const highlightKey = receivedCardId ? `${view.handIndex}-${receivedCardId}` : '';
 
   useEffect(() => {
     if (!showExchange || !exchangeKey) {
       return;
     }
-    const handle = setTimeout(() => setSeenExchange(exchangeKey), 2200);
+    const handle = setTimeout(() => setSeenExchange(exchangeKey), motion.exchangeRevealMs);
     return () => clearTimeout(handle);
   }, [showExchange, exchangeKey]);
+
+  useEffect(() => {
+    if (!highlightKey || !receivedCardId) {
+      setHighlightIds(new Set());
+      return;
+    }
+    setHighlightIds(new Set([receivedCardId]));
+    const handle = setTimeout(() => setHighlightIds(new Set()), motion.exchangeHighlightMs);
+    return () => clearTimeout(handle);
+  }, [highlightKey, receivedCardId]);
 
   useEffect(() => {
     const nextKey = play?.key ?? '';
@@ -697,6 +742,7 @@ export function TableScreen({
               cards={view.ownHand}
               selectedIds={selectedIds}
               legalIds={showLegalMoves ? legalCardIds : undefined}
+              highlightIds={highlightIds}
               selectionLegal={selectionLegal}
               language={language}
               disabled={dealing || (!humanTurn && chaosAction !== 'wildFrom')}
@@ -720,22 +766,6 @@ export function TableScreen({
           >
             {rack('south')}
           </View>
-          {exchanging && view.pendingExchange ? (
-            <View
-              style={[
-                styles.promptPill,
-                {
-                  left: handLeft,
-                  right: handRight,
-                  bottom: rimY + youBand + handFit.height + handFit.lift + 4,
-                },
-              ]}
-            >
-              <Text style={styles.promptText}>
-                {t(language, 'exchangeChoose', { name: seatName(language, view.pendingExchange.lastSeat) })}
-              </Text>
-            </View>
-          ) : null}
           <View
             style={[styles.passCol, { left: rimX, bottom: rimY }]}
             pointerEvents="box-none"
@@ -817,6 +847,7 @@ export function TableScreen({
               exchange={view.lastExchange}
               language={language}
               visible={showExchange && !dealing}
+              caption={exchangeCaption}
             />
           ) : null}
           {exchanging && view.pendingExchange ? (
@@ -831,6 +862,16 @@ export function TableScreen({
               language={language}
               visible
               incomingOnly
+              caption={
+                view.pendingExchange.firstSeat === localSeat
+                  ? t(language, 'exchangeIncoming', {
+                      last: tableName(view.pendingExchange.lastSeat),
+                      given: formatCardShort(view.pendingExchange.givenToFirst),
+                    })
+                  : t(language, 'exchangeChoose', {
+                      name: tableName(view.pendingExchange.lastSeat),
+                    })
+              }
             />
           ) : null}
           <View style={[styles.roundChip, { top: padT + 6, left: padL + 44 }]} pointerEvents="none">

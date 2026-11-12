@@ -206,6 +206,7 @@ export const sq: Record<keyof typeof en, string> = {
   botThinking: '{name} po luan',
   portraitHint: 'Kjo tavolinë është bërë për peizazh.',
   exchangeBanner: '{last} i dha {given} lojtarit {first}; {first} ktheu {returned}.',
+  exchangeIncoming: '{last} të dha {given}. Zgjidh një kartë për ta kthyer.',
   exchangeHint:
     'Dora tjetër: i fundit i jep kartën më të lartë të parit. I pari zgjedh kartën që kthen. Pastaj hap i fundit, përveçse kur i fundit ka të dy xhollot — atëherë nuk ka këmbim dhe hap i pari.',
   exchangeChoose: 'Zgjidh një kartë për {name}',

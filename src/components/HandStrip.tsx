@@ -9,6 +9,7 @@ type Props = {
   cards: Card[];
   selectedIds: string[];
   legalIds?: Set<string>;
+  highlightIds?: Set<string>;
   selectionLegal: boolean | null;
   language: Language;
   disabled?: boolean;
@@ -21,6 +22,7 @@ export function HandStrip({
   cards,
   selectedIds,
   legalIds,
+  highlightIds,
   selectionLegal,
   language,
   disabled,
@@ -42,7 +44,8 @@ export function HandStrip({
     >
       {cards.map((card, index) => {
         const selected = selectedIds.includes(card.id);
-        const dimmed = legalIds ? !legalIds.has(card.id) && !selected : false;
+        const highlighted = Boolean(highlightIds?.has(card.id));
+        const dimmed = legalIds ? !legalIds.has(card.id) && !selected && !highlighted : false;
         const tilt = (index - mid) * tiltStep;
         const arc = Math.abs(index - mid) * 0.8;
         const last = index === cards.length - 1;
@@ -64,13 +67,14 @@ export function HandStrip({
             <CardFace
               card={card}
               selected={selected}
+              highlighted={highlighted}
               legal={selected ? selectionLegal : null}
               language={language}
               disabled={disabled}
               width={resolved.width}
               height={resolved.height}
               hitWidth={stride}
-              tilt={selected ? 0 : tilt}
+              tilt={selected || highlighted ? 0 : tilt}
               liftOnSelect={false}
               sharedLayout={false}
               onPress={() => onToggle(card.id)}
