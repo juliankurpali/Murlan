@@ -36,7 +36,9 @@ import {
   legalMovesForSeat,
   mathRandomSource,
   PublicChaosView,
+  PublicLiesView,
   SeatId,
+  StandardRank,
   toPublicView,
 } from './domain';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -85,6 +87,8 @@ import { AdminScreen } from './screens/AdminScreen';
 import { HandResultScreen } from './screens/HandResultScreen';
 import { LegalScreen } from './screens/LegalScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { LiesResultScreen } from './screens/LiesResultScreen';
+import { LiesTableScreen } from './screens/LiesTableScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { RulesScreen } from './screens/RulesScreen';
@@ -125,6 +129,7 @@ import {
   setApiToken,
   startGame,
   setGameMode,
+  setLiesOptions,
   setLobbyReady,
   inviteToGame,
 } from './social/api';
@@ -197,6 +202,30 @@ function durationForCurrentTurn(
   return action?.type === 'pass' ? motion.botPassMs : motion.botPlayMs;
 }
 
+function durationForLiesTurn(
+  view: PublicLiesView,
+  botSeats: number[],
+  roomSeats: { isBot: boolean; connection: string }[] | null | undefined,
+): number {
+  // Match Classic: bots ~1.2s, humans 20s (disconnected humans 8s).
+  if (botSeats.includes(view.currentSeat)) {
+    return motion.botPlayMs;
+  }
+  const occupant = roomSeats?.[view.currentSeat];
+  if (occupant?.isBot) {
+    return motion.botPlayMs;
+  }
+  if (
+    occupant &&
+    occupant.connection !== 'connected' &&
+    occupant.connection !== 'restoring' &&
+    occupant.connection !== 'reconnecting'
+  ) {
+    return 8_000;
+  }
+  return motion.humanTurnMs;
+}
+
 export function MatchApp() {
   const [session, dispatch] = useReducer(sessionReducer, initialSession());
   const [onlineRoom, setOnlineRoom] = useState<GameRoom | null>(null);
@@ -210,6 +239,9 @@ export function MatchApp() {
   const [playAgainReady, setPlayAgainReady] = useState<SeatId[]>([]);
   const [series, setSeries] = useState<TableSeries>(EMPTY_SERIES);
   const [chaosView, setChaosView] = useState<PublicChaosView | null>(null);
+  const [liesView, setLiesView] = useState<PublicLiesView | null>(null);
+  const [liesLegalIds, setLiesLegalIds] = useState<string[]>([]);
+  const [liesHumanTurn, setLiesHumanTurn] = useState(false);
   const [micStatus, setMicStatus] = useState<MicCaptureStatus>('muted');
   const [me, setMe] = useState<PublicPlayer | null>(null);
   const [friends, setFriends] = useState<PublicPlayer[]>([]);
@@ -280,6 +312,10 @@ export function MatchApp() {
     setReactionCoolUntil(0);
     seenReactions.current.clear();
     setNextHandReady([]);
+    setPlayAgainReady([]);
+    setLiesView(null);
+    setLiesLegalIds([]);
+    setLiesHumanTurn(false);
     setMicStatus('muted');
     void clearMatch();
     dispatch({ type: 'setMatch', match: null });
@@ -379,7 +415,32 @@ export function MatchApp() {
           setSeries(table.series);
         }
         setChaosView(table.chaos ?? null);
-        commitMatch(matchFromView(table.view));
+        if (table.view.mode === 'lies') {
+          setLiesView(table.view as PublicLiesView);
+          setLiesLegalIds(table.legalCardIds);
+          setLiesHumanTurn(table.humanTurn);
+          const restoring = restoreRef.current;
+          const parked =
+            !restoring &&
+            (screenRef.current === 'home' ||
+              screenRef.current === 'rules' ||
+              screenRef.current === 'settings' ||
+              screenRef.current === 'social' ||
+              screenRef.current === 'profile');
+          if (parked) {
+            return;
+          }
+          restoreRef.current = false;
+          if (table.view.phase === 'handComplete') {
+            void feel('win');
+            dispatch({ type: 'navigate', screen: 'handResult' });
+          } else {
+            dispatch({ type: 'navigate', screen: 'table' });
+          }
+          return;
+        }
+        setLiesView(null);
+        commitMatch(matchFromView(table.view as import('./domain').PublicMatchView));
         const restoring = restoreRef.current;
         const parked =
           !restoring &&
@@ -948,12 +1009,14 @@ export function MatchApp() {
     return names.length > 0 ? t(language, 'waitingNextHand', { names: names.join(', ') }) : t(language, 'youAreReady');
   }, [view, youReadyForNext, onlineRoom, nextHandReady, language]);
   const waitingForPlayAgain = useMemo(() => {
-    if (!view || view.phase !== 'matchComplete' || !youReadyToPlayAgain) {
+    const liesDone = liesView?.phase === 'handComplete';
+    const murlanDone = view?.phase === 'matchComplete';
+    if ((!liesDone && !murlanDone) || !youReadyToPlayAgain) {
       return null;
     }
     const names = waitingSeatNames(onlineRoom?.seats, playAgainReady);
     return names.length > 0 ? t(language, 'waitingPlayAgain', { names: names.join(', ') }) : t(language, 'youAreReady');
-  }, [view, youReadyToPlayAgain, onlineRoom, playAgainReady, language]);
+  }, [view, liesView, youReadyToPlayAgain, onlineRoom, playAgainReady, language]);
   const rules = session.match?.rules ?? DEFAULT_RULES;
   const onMicStatus = useCallback((status: MicCaptureStatus) => {
     setMicStatus(status);
@@ -1087,7 +1150,33 @@ export function MatchApp() {
 
   return (
     <View style={styles.shell}>
-      {session.screen === 'table' && view ? (
+      {session.screen === 'table' && liesView ? (
+        <LiesTableScreen
+          language={language}
+          view={liesView}
+          localSeat={localSeat}
+          roomSeats={tableSeats}
+          humanAppearance={{
+            profileUri: session.settings.profileUri,
+            tone: 0,
+          }}
+          legalCardIds={liesLegalIds}
+          humanTurn={liesHumanTurn}
+          turnDurationMs={durationForLiesTurn(liesView, botSeats, tableSeats ?? onlineRoom?.seats)}
+          chat={online ? chat : []}
+          onSendChat={online ? sendChat : undefined}
+          onToggleMute={online ? toggleMute : undefined}
+          onClaim={(cardIds, rank: StandardRank) => sendIntent('liesClaim', { cards: cardIds, rank })}
+          onBelieve={() => sendIntent('liesBelieve')}
+          onChallenge={() => sendIntent('liesChallenge')}
+          onClear={() => sendIntent('liesClear')}
+          onLeave={leaveTable}
+          onSettings={() => {
+            settingsFromTable.current = true;
+            dispatch({ type: 'navigate', screen: 'settings' });
+          }}
+        />
+      ) : session.screen === 'table' && view ? (
         <TableScreen
           language={language}
           view={view}
@@ -1254,18 +1343,53 @@ export function MatchApp() {
                 setOnlineRoom({
                   ...onlineRoom,
                   mode,
-                  seats: seatsForMode(mode, onlineRoom.seats),
+                  seats: seatsForMode(mode, onlineRoom.seats, onlineRoom.seats.length),
+                  liesDeckCount: mode === 'lies' ? onlineRoom.liesDeckCount ?? 1 : undefined,
                 });
                 void setGameMode(onlineRoom.id, mode)
                   .then((game) => {
                     setOnlineRoom((current) =>
                       current && current.id === game.id
-                        ? { ...current, mode: game.mode, seats: seatsForMode(game.mode, current.seats) }
+                        ? {
+                            ...current,
+                            mode: game.mode,
+                            liesDeckCount: game.liesDeckCount ?? 1,
+                            seats: seatsForMode(game.mode, current.seats, game.seats.length),
+                          }
                         : current,
                     );
                   })
                   .catch((error: unknown) => {
                     Alert.alert(t(language, 'mode'), tError(language, error));
+                  });
+              }}
+              onSetLiesOptions={(options) => {
+                if (!onlineRoom?.id || onlineRoom.mode !== 'lies') {
+                  return;
+                }
+                if (typeof options.players === 'number') {
+                  setOnlineRoom({
+                    ...onlineRoom,
+                    seats: seatsForMode('lies', onlineRoom.seats, options.players),
+                  });
+                }
+                if (options.decks === 1 || options.decks === 2) {
+                  setOnlineRoom({ ...onlineRoom, liesDeckCount: options.decks });
+                }
+                void setLiesOptions(onlineRoom.id, options)
+                  .then((game) => {
+                    setOnlineRoom((current) =>
+                      current && current.id === game.id
+                        ? {
+                            ...current,
+                            liesDeckCount: game.liesDeckCount ?? 1,
+                            seats: seatsForMode('lies', current.seats, game.seats.length),
+                          }
+                        : current,
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    Alert.alert(t(language, 'modeLies'), tError(language, error));
                   });
               }}
               onStart={() => {
@@ -1346,7 +1470,27 @@ export function MatchApp() {
               onStart={beginMatch}
             />
           ) : null}
-          {session.screen === 'handResult' && view ? (
+          {session.screen === 'handResult' && liesView ? (
+            <LiesResultScreen
+              language={language}
+              view={liesView}
+              localSeat={localSeat}
+              seats={(tableSeats ?? onlineRoom?.seats ?? []).map((seat) => ({
+                name: seat.isYou ? t(language, 'you') : seat.name,
+                isYou: seat.isYou,
+              }))}
+              playAgainReady={youReadyToPlayAgain}
+              waitingFor={waitingForPlayAgain}
+              onMenu={leaveTable}
+              onPlayAgain={() => {
+                if (!youReadyToPlayAgain) {
+                  setPlayAgainReady((prev) => [...prev, localSeat]);
+                  sendIntent('playAgain');
+                }
+              }}
+            />
+          ) : null}
+          {session.screen === 'handResult' && view && !liesView ? (
             <HandResultScreen
               language={language}
               view={view}

@@ -382,13 +382,24 @@ export function sendAway() {
 }
 
 export function sendIntent(
-  kind: 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability',
+  kind:
+    | 'play'
+    | 'pass'
+    | 'exchange'
+    | 'nextHand'
+    | 'playAgain'
+    | 'ability'
+    | 'liesClaim'
+    | 'liesBelieve'
+    | 'liesChallenge'
+    | 'liesClear',
   payload?: {
     cards?: string[];
     cardId?: string;
     intoCardId?: string;
     abilityId?: ChaosAbilityId;
     targetSeat?: SeatId;
+    rank?: import('../domain').StandardRank;
   },
 ) {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -401,6 +412,7 @@ export function sendIntent(
     intoCardId: payload?.intoCardId,
     abilityId: payload?.abilityId,
     targetSeat: payload?.targetSeat,
+    rank: payload?.rank,
   });
 }
 

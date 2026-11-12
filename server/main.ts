@@ -177,6 +177,7 @@ function toRelayRoom(game: PlatformGame) {
     hostId: game.createdBy,
     started: game.status === 'playing',
     mode: game.mode,
+    liesDeckCount: game.mode === 'lies' ? game.liesDeckCount ?? 1 : undefined,
     seats: game.seats.map((seat, index) => {
       if (!seat.userId && !seat.isBot) {
         return null;
@@ -357,7 +358,36 @@ function schedule(game: PlatformGame) {
   if (prev) {
     clearTimeout(prev);
   }
-  if (!game.match || game.status !== 'playing') {
+  if (game.status !== 'playing') {
+    return;
+  }
+  if (game.mode === 'lies') {
+    if (!game.lies) {
+      return;
+    }
+    if (game.lies.phase === 'handComplete') {
+      store.recordResult(game);
+      broadcastGame(game);
+      return;
+    }
+    const wait = turnDelay(game);
+    timers.set(
+      game.id,
+      setTimeout(() => {
+        try {
+          if (autoAct(game)) {
+            store.save();
+            broadcastGame(game);
+            schedule(game);
+          }
+        } catch {
+          /* ignore */
+        }
+      }, wait),
+    );
+    return;
+  }
+  if (!game.match) {
     return;
   }
   ensureBotReactions(game);
@@ -696,18 +726,36 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse) {
           json(res, 200, { game: store.summary(game, user.id) });
           return;
         }
-        store.setMatchMode(
-          user,
-          game,
-          payload.mode === 'super' ? 'super' : '2v2',
-        );
+        const nextMode =
+          payload.mode === 'super' ? 'super' : payload.mode === 'lies' ? 'lies' : '2v2';
+        store.setMatchMode(user, game, nextMode);
+        if (nextMode === 'lies') {
+          if (typeof payload.players === 'number') {
+            store.setLiesPlayerCount(user, game, payload.players);
+          }
+          if (payload.decks === 1 || payload.decks === 2) {
+            store.setLiesDeckCount(user, game, payload.decks);
+          }
+        }
+        broadcastGame(game);
+        json(res, 200, { game: store.summary(game, user.id) });
+        return;
+      }
+      if (req.method === 'POST' && rest === 'lies') {
+        const payload = await body(req).catch(() => ({} as Json));
+        if (typeof payload.players === 'number') {
+          store.setLiesPlayerCount(user, game, payload.players);
+        }
+        if (payload.decks === 1 || payload.decks === 2) {
+          store.setLiesDeckCount(user, game, payload.decks);
+        }
         broadcastGame(game);
         json(res, 200, { game: store.summary(game, user.id) });
         return;
       }
       if (req.method === 'POST' && rest === 'start') {
         const payload = await body(req).catch(() => ({} as Json));
-        if (payload.mode === '2v2' || payload.mode === 'super') {
+        if (payload.mode === '2v2' || payload.mode === 'super' || payload.mode === 'lies') {
           store.setMatchMode(user, game, payload.mode);
         } else if (game.mode === 'chaos') {
           store.setMatchMode(user, game, '2v2');
@@ -865,15 +913,31 @@ wss.on('connection', (ws, req) => {
       }
       try {
         applyUserIntent(game, player.id, {
-          kind: message.kind as 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability',
+          kind: message.kind as
+            | 'play'
+            | 'pass'
+            | 'exchange'
+            | 'nextHand'
+            | 'playAgain'
+            | 'ability'
+            | 'liesClaim'
+            | 'liesBelieve'
+            | 'liesChallenge'
+            | 'liesClear',
           cards: Array.isArray(message.cards) ? (message.cards as string[]) : undefined,
           cardId: typeof message.cardId === 'string' ? message.cardId : undefined,
           intoCardId: typeof message.intoCardId === 'string' ? message.intoCardId : undefined,
           abilityId: typeof message.abilityId === 'string' ? (message.abilityId as import('../src/domain').ChaosAbilityId) : undefined,
           targetSeat:
-            message.targetSeat === 0 || message.targetSeat === 1 || message.targetSeat === 2 || message.targetSeat === 3
+            message.targetSeat === 0 ||
+            message.targetSeat === 1 ||
+            message.targetSeat === 2 ||
+            message.targetSeat === 3 ||
+            message.targetSeat === 4 ||
+            message.targetSeat === 5
               ? message.targetSeat
               : undefined,
+          rank: typeof message.rank === 'number' ? (message.rank as import('../src/domain').StandardRank) : undefined,
         });
         store.save();
         broadcastGame(game);

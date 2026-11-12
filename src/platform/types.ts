@@ -2,8 +2,10 @@ import {
   ChaosState,
   CombinationType,
   GameState,
+  LiesState,
   MatchMode,
   PublicChaosView,
+  PublicLiesView,
   PublicMatchView,
   SeatId,
 } from '../domain';
@@ -116,6 +118,9 @@ export type PlatformGame = {
   seats: GameSeat[];
   match: GameState | null;
   chaos: ChaosState | null;
+  lies: LiesState | null;
+  /** Host-chosen deck count for Lies (default 1). */
+  liesDeckCount: 1 | 2;
   chat: ChatMessage[];
   seenIntents: Record<string, string[]>;
   nextHandReady: SeatId[];
@@ -184,6 +189,7 @@ export type GameSummary = {
   status: PlatformGame['status'];
   createdBy: string;
   updatedAt: number;
+  liesDeckCount?: 1 | 2;
   seats: {
     name: string;
     userId: string | null;
@@ -266,7 +272,7 @@ export type TablePayload = {
   gameId: string;
   code: string;
   seat: SeatId;
-  view: PublicMatchView;
+  view: PublicMatchView | PublicLiesView;
   legalCardIds: string[];
   humanTurn: boolean;
   nextHandReady: SeatId[];

@@ -189,10 +189,25 @@ export async function startGame(
   });
 }
 
-export async function setGameMode(gameId: string, mode: MatchMode): Promise<GameSummary> {
+export async function setGameMode(
+  gameId: string,
+  mode: MatchMode,
+  options?: { players?: number; decks?: 1 | 2 },
+): Promise<GameSummary> {
   const result = await request<{ game: GameSummary }>(`/v1/games/${gameId}/mode`, {
     method: 'POST',
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify({ mode, players: options?.players, decks: options?.decks }),
+  });
+  return result.game;
+}
+
+export async function setLiesOptions(
+  gameId: string,
+  options: { players?: number; decks?: 1 | 2 },
+): Promise<GameSummary> {
+  const result = await request<{ game: GameSummary }>(`/v1/games/${gameId}/lies`, {
+    method: 'POST',
+    body: JSON.stringify(options),
   });
   return result.game;
 }

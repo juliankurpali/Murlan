@@ -20,21 +20,36 @@ export function isSuperMode(mode: MatchMode): boolean {
   return mode === 'super';
 }
 
-export function playerCountFor(mode: MatchMode): number {
-  return mode === 'super' ? SUPER_MURLAN.maxPlayers : 4;
+export function isLiesMode(mode: MatchMode): boolean {
+  return mode === 'lies';
 }
 
-export function seatsForMode(mode: MatchMode): SeatId[] {
-  return mode === 'super' ? SUPER_SEATS : CLASSIC_SEATS;
+export function playerCountFor(mode: MatchMode, liesPlayers = 4): number {
+  if (mode === 'super') return SUPER_MURLAN.maxPlayers;
+  if (mode === 'lies') return Math.min(6, Math.max(3, liesPlayers));
+  return 4;
+}
+
+export function seatsForMode(mode: MatchMode, liesPlayers = 4): SeatId[] {
+  if (mode === 'super') return SUPER_SEATS;
+  if (mode === 'lies') {
+    return Array.from({ length: playerCountFor('lies', liesPlayers) }, (_, i) => i as SeatId);
+  }
+  return CLASSIC_SEATS;
 }
 
 export function defaultTeamOf(mode: MatchMode): number[] {
   if (mode === 'super') {
     return [0, 1, 2, 0, 1, 2];
   }
+  if (mode === 'lies') {
+    return [0, 1, 2, 3, 4, 5];
+  }
   return [0, 1, 0, 1];
 }
 
 export function teamCountFor(mode: MatchMode): number {
-  return mode === 'super' ? SUPER_MURLAN.teamCount : 2;
+  if (mode === 'super') return SUPER_MURLAN.teamCount;
+  if (mode === 'lies') return 0;
+  return 2;
 }

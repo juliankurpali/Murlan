@@ -79,8 +79,28 @@ const SIX_SEAT_ANGLES = [
   0.1 * Math.PI,
 ];
 
+function anglesForCount(seatCount: number): number[] {
+  // Keep Classic / Super oval seats — do not evenly-space 3/5 into odd angles.
+  if (seatCount >= 6) return SIX_SEAT_ANGLES;
+  if (seatCount === 5) {
+    // Super oval without due-north: south, SW, NW, NE, SE.
+    return [
+      SIX_SEAT_ANGLES[0]!,
+      SIX_SEAT_ANGLES[1]!,
+      SIX_SEAT_ANGLES[2]!,
+      SIX_SEAT_ANGLES[4]!,
+      SIX_SEAT_ANGLES[5]!,
+    ];
+  }
+  if (seatCount === 3) {
+    // Classic left / right seats (west + east), you stay south.
+    return [FOUR_SEAT_ANGLES[0]!, FOUR_SEAT_ANGLES[1]!, FOUR_SEAT_ANGLES[3]!];
+  }
+  return FOUR_SEAT_ANGLES;
+}
+
 export function seatAngle(visualSeat: number, seatCount = 4): number {
-  const table = seatCount === 6 ? SIX_SEAT_ANGLES : FOUR_SEAT_ANGLES;
+  const table = anglesForCount(seatCount);
   return table[((visualSeat % table.length) + table.length) % table.length] ?? Math.PI / 2;
 }
 
@@ -90,7 +110,7 @@ export function seatPoint(seat: SeatId, size: TableSize, seatCount = 4): Point {
   const insetY = Math.max(26, size.height * 0.09);
   const rx = Math.max(64, size.width / 2 - insetX);
   const ry = Math.max(48, size.height / 2 - insetY);
-  const north = seatCount === 6 ? 3 : 2;
+  const north = Math.floor(seatCount / 2);
   return {
     x: size.width / 2 + rx * Math.cos(angle),
     y: size.height / 2 + ry * Math.sin(angle) + (seat === north ? Math.min(20, size.height * 0.05) : 0),

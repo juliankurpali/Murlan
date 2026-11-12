@@ -24,6 +24,7 @@ export type GameRoom = {
   host: boolean;
   started: boolean;
   mode: MatchMode;
+  liesDeckCount?: 1 | 2;
   seats: RoomSeat[];
   pendingJoins?: { fromId: string; username: string }[];
 };
@@ -32,8 +33,9 @@ export function emptyRoomSeat(): RoomSeat {
   return occupant('Empty', { ready: false, voiceAvailable: false, connection: 'abandoned', lobbyReady: false });
 }
 
-export function seatsForMode(mode: MatchMode, seats: RoomSeat[]): RoomSeat[] {
-  const count = mode === 'super' ? 6 : 4;
+export function seatsForMode(mode: MatchMode, seats: RoomSeat[], liesPlayers = 4): RoomSeat[] {
+  const count =
+    mode === 'super' ? 6 : mode === 'lies' ? Math.min(6, Math.max(3, liesPlayers || seats.length || 4)) : 4;
   if (seats.length === count) {
     return seats;
   }
@@ -78,7 +80,8 @@ export function isRoomCode(value: string): boolean {
 }
 
 export function roomIsReady(room: GameRoom): boolean {
-  const needed = room.mode === 'super' ? 6 : 4;
+  const needed =
+    room.mode === 'super' ? 6 : room.mode === 'lies' ? Math.min(6, Math.max(3, room.seats.length)) : 4;
   return room.seats.length === needed && room.seats.every((seat) => seat.ready);
 }
 
@@ -106,12 +109,24 @@ export function botSeatsOf(room: GameRoom | null): number[] {
 
 export type TableSide = 'south' | 'west' | 'north' | 'east' | 'northwest' | 'northeast' | 'southwest' | 'southeast';
 
+const SEAT_OFFSET: Record<number, Record<TableSide, number>> = {
+  3: { south: 0, west: 1, southwest: 1, northwest: 1, north: 1, east: 2, southeast: 2, northeast: 2 },
+  4: { south: 0, west: 1, north: 2, east: 3, northwest: 2, northeast: 2, southwest: 1, southeast: 3 },
+  5: { south: 0, southwest: 1, west: 1, northwest: 2, north: 2, northeast: 3, east: 4, southeast: 4 },
+  6: { south: 0, southwest: 1, northwest: 2, north: 3, northeast: 4, southeast: 5, west: 1, east: 5 },
+};
+
 export function tableSeat(localSeat: number, side: TableSide, seatCount = 4): number {
-  const offset =
-    seatCount === 6
-      ? { south: 0, southwest: 1, northwest: 2, north: 3, northeast: 4, southeast: 5, west: 1, east: 5 }[side]
-      : { south: 0, west: 1, north: 2, east: 3, northwest: 2, northeast: 2, southwest: 1, southeast: 3 }[side];
-  return (localSeat + offset) % seatCount;
+  const table = SEAT_OFFSET[seatCount] ?? SEAT_OFFSET[4]!;
+  return (localSeat + table[side]) % seatCount;
+}
+
+/** Opponent sides around the table, matching Classic / Super layout. */
+export function opponentTableSides(seatCount: number): TableSide[] {
+  if (seatCount <= 3) return ['west', 'east'];
+  if (seatCount === 4) return ['west', 'north', 'east'];
+  if (seatCount === 5) return ['southwest', 'northwest', 'northeast', 'southeast'];
+  return ['southwest', 'northwest', 'north', 'northeast', 'southeast'];
 }
 
 export function hostRoom(playerName: string): GameRoom {

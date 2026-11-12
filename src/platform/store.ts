@@ -190,17 +190,31 @@ export class PlatformStore {
     }
     this.friends = parsed.friends ?? [];
     for (const game of parsed.games ?? []) {
+      const mode =
+        game.mode === 'chaos'
+          ? 'chaos'
+          : game.mode === 'super'
+            ? 'super'
+            : game.mode === 'lies'
+              ? 'lies'
+              : '2v2';
+      const liesPlayers = Math.min(6, Math.max(3, game.seats?.length ?? 4));
       this.games.set(game.id, {
         ...game,
-        mode: game.mode === 'chaos' ? 'chaos' : game.mode === 'super' ? 'super' : '2v2',
-        chaos: game.mode === 'chaos' ? (game.chaos ?? null) : null,
+        mode,
+        chaos: mode === 'chaos' ? (game.chaos ?? null) : null,
+        lies: mode === 'lies' ? ((game as PlatformGame).lies ?? null) : null,
+        liesDeckCount: (game as PlatformGame).liesDeckCount === 2 ? 2 : 1,
         chat: game.status === 'complete' ? [] : (game.chat ?? []),
         nextHandReady: game.nextHandReady ?? [],
         playAgainReady: game.playAgainReady ?? [],
         series: game.series ?? {
           matches: 0,
-          teamWins: Array.from({ length: game.mode === 'super' ? 3 : 2 }, () => 0),
-          seatWins: Array.from({ length: game.mode === 'super' ? 6 : 4 }, () => 0),
+          teamWins: Array.from({ length: mode === 'super' ? 3 : mode === 'lies' ? 0 : 2 }, () => 0),
+          seatWins: Array.from(
+            { length: mode === 'super' ? 6 : mode === 'lies' ? liesPlayers : 4 },
+            () => 0,
+          ),
         },
         resultRecorded: Boolean(game.resultRecorded),
         statsRecorded: Boolean(game.statsRecorded),
@@ -209,21 +223,30 @@ export class PlatformStore {
             ...seat,
             lobbyReady: seat.lobbyReady ?? Boolean(seat.isBot || seat.userId === game.createdBy),
           }));
-          if (game.mode === 'super') {
+          if (mode === 'super') {
             while (seats.length < 6) {
               seats.push(emptySeat());
             }
             return seats.slice(0, 6);
           }
+          if (mode === 'lies') {
+            while (seats.length < liesPlayers) {
+              seats.push(emptySeat());
+            }
+            return seats.slice(0, liesPlayers);
+          }
           return seats.slice(0, 4);
         })() as PlatformGame['seats'],
-        match: game.match
-          ? {
-              ...game.match,
-              teamOf: game.match.teamOf ?? defaultTeamOf(game.match.mode ?? game.mode),
-              undealt: game.match.undealt ?? [],
-            }
-          : game.match,
+        match:
+          mode === 'lies'
+            ? null
+            : game.match
+              ? {
+                  ...game.match,
+                  teamOf: game.match.teamOf ?? defaultTeamOf(game.match.mode ?? game.mode),
+                  undealt: game.match.undealt ?? [],
+                }
+              : game.match,
       });
     }
     this.invites = (parsed.invites ?? []).map((row) => ({
@@ -556,6 +579,8 @@ export class PlatformStore {
       seats,
       match: null,
       chaos: null,
+      lies: null,
+      liesDeckCount: 1,
       chat: [],
       seenIntents: {},
       nextHandReady: [],
@@ -913,15 +938,57 @@ export class PlatformStore {
     if (game.status !== 'lobby') {
       throw new Error('room-started');
     }
-    game.mode = mode === 'chaos' ? 'chaos' : mode === 'super' ? 'super' : '2v2';
-    this.resizeSeats(game, game.mode === 'super' ? 6 : 4);
+    game.mode =
+      mode === 'chaos' ? 'chaos' : mode === 'super' ? 'super' : mode === 'lies' ? 'lies' : '2v2';
+    if (game.mode === 'super') {
+      this.resizeSeats(game, 6);
+    } else if (game.mode === 'lies') {
+      const count = Math.min(6, Math.max(3, game.seats.length >= 3 ? game.seats.length : 4));
+      this.resizeSeats(game, count);
+      game.liesDeckCount = game.liesDeckCount === 2 ? 2 : 1;
+      game.lies = null;
+      game.match = null;
+    } else {
+      this.resizeSeats(game, 4);
+      game.lies = null;
+    }
     if (game.series.matches === 0) {
       game.series = {
         matches: 0,
-        teamWins: Array.from({ length: game.mode === 'super' ? 3 : 2 }, () => 0),
+        teamWins: Array.from({
+          length: game.mode === 'super' ? 3 : game.mode === 'lies' ? 0 : 2,
+        }, () => 0),
         seatWins: Array.from({ length: game.seats.length }, () => 0),
       };
     }
+    game.updatedAt = Date.now();
+    this.save();
+  }
+
+  setLiesPlayerCount(user: PlatformPlayer, game: PlatformGame, count: number) {
+    this.assertHost(user, game);
+    if (game.status !== 'lobby' || game.mode !== 'lies') {
+      throw new Error('room-started');
+    }
+    const next = Math.min(6, Math.max(3, Math.round(count)));
+    this.resizeSeats(game, next);
+    if (game.series.matches === 0) {
+      game.series = {
+        matches: 0,
+        teamWins: [],
+        seatWins: Array.from({ length: next }, () => 0),
+      };
+    }
+    game.updatedAt = Date.now();
+    this.save();
+  }
+
+  setLiesDeckCount(user: PlatformPlayer, game: PlatformGame, decks: 1 | 2) {
+    this.assertHost(user, game);
+    if (game.status !== 'lobby' || game.mode !== 'lies') {
+      throw new Error('room-started');
+    }
+    game.liesDeckCount = decks === 2 ? 2 : 1;
     game.updatedAt = Date.now();
     this.save();
   }
@@ -1022,6 +1089,7 @@ export class PlatformStore {
       status: game.status,
       createdBy: game.createdBy,
       updatedAt: game.updatedAt,
+      liesDeckCount: game.mode === 'lies' ? game.liesDeckCount ?? 1 : undefined,
       invited: this.invites.some((invite) => invite.gameId === game.id && invite.toId === viewerId && invite.status === 'pending'),
       joinPending: this.joinRequests.some(
         (row) => row.gameId === game.id && row.fromId === viewerId && row.status === 'pending',
@@ -1175,6 +1243,45 @@ export class PlatformStore {
   }
 
   recordResult(game: PlatformGame) {
+    if (game.mode === 'lies') {
+      if (!game.lies || game.lies.phase !== 'handComplete') {
+        return;
+      }
+      tallySeries(game);
+      if (game.statsRecorded) {
+        return;
+      }
+      game.statsRecorded = true;
+      const first = game.lies.finishOrder[0];
+      for (const [index, seat] of game.seats.entries()) {
+        if (!seat.userId) {
+          continue;
+        }
+        const player = this.players.get(seat.userId);
+        if (!player) {
+          continue;
+        }
+        player.gamesPlayed += 1;
+        const won = first === index;
+        if (won) {
+          player.wins += 1;
+          player.individualWins += 1;
+        } else {
+          player.losses += 1;
+        }
+        this.history.push({
+          id: randomId('mh'),
+          gameId: game.id,
+          mode: game.mode,
+          at: Date.now(),
+          userId: player.id,
+          won,
+          score: game.lies.finishOrder.indexOf(index as SeatId) + 1,
+        });
+      }
+      this.save();
+      return;
+    }
     if (!game.match || game.match.phase !== 'matchComplete') {
       return;
     }

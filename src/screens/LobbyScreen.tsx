@@ -7,6 +7,7 @@ import { NetStatus } from '../online/net';
 import { MatchMode } from '../domain';
 import { PublicPlayer } from '../platform/types';
 import { ChaosBook } from '../components/ChaosBook';
+import { LiesBook } from '../components/LiesBook';
 import { SuperBook } from '../components/SuperBook';
 import { ChatPanel } from '../components/ChatPanel';
 import { KeyboardField } from '../components/KeyboardField';
@@ -27,6 +28,7 @@ type Props = {
   onFillBots: () => void;
   onStart: () => void;
   onSetMode?: (mode: MatchMode) => void;
+  onSetLiesOptions?: (options: { players?: number; decks?: 1 | 2 }) => void;
   onLeave: () => void;
   chat: ChatMessage[];
   onSendChat: (text: string) => void;
@@ -76,6 +78,7 @@ export function LobbyScreen({
   onFillBots,
   onStart,
   onSetMode,
+  onSetLiesOptions,
   onLeave,
   chat,
   onSendChat,
@@ -136,11 +139,13 @@ export function LobbyScreen({
   const waiting = waitingReadyNames(room);
   const canStart = roomIsReady(room) && guestsAreReady(room);
 
-  const bookKind = room.mode === 'chaos' ? 'chaos' : room.mode === 'super' ? 'super' : null;
+  const bookKind =
+    room.mode === 'chaos' ? 'chaos' : room.mode === 'super' ? 'super' : room.mode === 'lies' ? 'lies' : null;
   const book = (
     <>
       <ChaosBook language={language} visible={bookOpen && bookKind === 'chaos'} onClose={() => setBookOpen(false)} />
       <SuperBook language={language} visible={bookOpen && bookKind === 'super'} onClose={() => setBookOpen(false)} />
+      <LiesBook language={language} visible={bookOpen && bookKind === 'lies'} onClose={() => setBookOpen(false)} />
     </>
   );
 
@@ -154,12 +159,25 @@ export function LobbyScreen({
             <Text style={styles.body}>
               {t(
                 language,
-                room.mode === 'chaos' ? 'chaosMode' : room.mode === 'super' ? 'modeSuper' : 'chaosClassic',
+                room.mode === 'chaos'
+                  ? 'chaosMode'
+                  : room.mode === 'super'
+                    ? 'modeSuper'
+                    : room.mode === 'lies'
+                      ? 'modeLies'
+                      : 'chaosClassic',
               )}
             </Text>
             {bookKind ? (
               <UiButton
-                label={t(language, bookKind === 'chaos' ? 'chaosBookTitle' : 'superBookTitle')}
+                label={t(
+                  language,
+                  bookKind === 'chaos'
+                    ? 'chaosBookTitle'
+                    : bookKind === 'lies'
+                      ? 'liesBookTitle'
+                      : 'superBookTitle',
+                )}
                 variant="secondary"
                 onPress={() => setBookOpen(true)}
               />
@@ -245,6 +263,12 @@ export function LobbyScreen({
               style={styles.modeBtn}
             />
             <UiButton
+              label={t(language, 'modeLies')}
+              variant={room.mode === 'lies' ? 'primary' : 'secondary'}
+              onPress={() => onSetMode?.('lies')}
+              style={styles.modeBtn}
+            />
+            <UiButton
               label={t(language, 'chaosMode')}
               variant="secondary"
               disabled
@@ -256,12 +280,56 @@ export function LobbyScreen({
           <Text style={styles.body}>
             {t(
               language,
-              room.mode === 'chaos' ? 'chaosModeHint' : room.mode === 'super' ? 'modeSuperHint' : 'chaosClassicHint',
+              room.mode === 'chaos'
+                ? 'chaosModeHint'
+                : room.mode === 'super'
+                  ? 'modeSuperHint'
+                  : room.mode === 'lies'
+                    ? 'modeLiesHint'
+                    : 'chaosClassicHint',
             )}
           </Text>
+          {room.mode === 'lies' ? (
+            <View style={styles.roomActions}>
+              <Text style={styles.body}>{t(language, 'liesPlayers')}</Text>
+              <View style={styles.modeRow}>
+                {([3, 4, 5, 6] as const).map((count) => (
+                  <UiButton
+                    key={count}
+                    label={String(count)}
+                    variant={room.seats.length === count ? 'primary' : 'secondary'}
+                    onPress={() => onSetLiesOptions?.({ players: count })}
+                    style={styles.modeBtn}
+                  />
+                ))}
+              </View>
+              <Text style={styles.body}>{t(language, 'liesDecks')}</Text>
+              <View style={styles.modeRow}>
+                <UiButton
+                  label={t(language, 'liesDeckOne')}
+                  variant={(room.liesDeckCount ?? 1) === 1 ? 'primary' : 'secondary'}
+                  onPress={() => onSetLiesOptions?.({ decks: 1 })}
+                  style={styles.modeBtn}
+                />
+                <UiButton
+                  label={t(language, 'liesDeckTwo')}
+                  variant={(room.liesDeckCount ?? 1) === 2 ? 'primary' : 'secondary'}
+                  onPress={() => onSetLiesOptions?.({ decks: 2 })}
+                  style={styles.modeBtn}
+                />
+              </View>
+            </View>
+          ) : null}
           {bookKind ? (
             <UiButton
-              label={t(language, bookKind === 'chaos' ? 'chaosBookTitle' : 'superBookTitle')}
+              label={t(
+                language,
+                bookKind === 'chaos'
+                  ? 'chaosBookTitle'
+                  : bookKind === 'lies'
+                    ? 'liesBookTitle'
+                    : 'superBookTitle',
+              )}
               variant="ghost"
               onPress={() => setBookOpen(true)}
             />
@@ -295,6 +363,21 @@ export function LobbyScreen({
             <View style={styles.roomActions}>
               <Text style={styles.body}>{t(language, 'inviteFriend')}</Text>
               {friends.slice(0, 4).map((friend) => {
+                if (room.mode === 'lies') {
+                  return (
+                    <View key={friend.id} style={styles.inviteRow}>
+                      <Text style={styles.inviteName} numberOfLines={1}>
+                        {friend.username}
+                      </Text>
+                      <UiButton
+                        label={t(language, 'inviteFriend')}
+                        variant="ghost"
+                        onPress={() => onInvite(friend.username)}
+                        style={styles.inviteBtn}
+                      />
+                    </View>
+                  );
+                }
                 const superTable = room.mode === 'super';
                 const myTeam = (localSeatOf(room) % (superTable ? 3 : 2)) as 0 | 1 | 2;
                 const inviteTeams = superTable ? ([0, 1, 2] as const) : ([0, 1] as const);
@@ -363,7 +446,34 @@ function RoomSeats({
   onAddFriend?: (username: string) => void;
   onToggleMute?: () => void;
 }) {
-  const seated = { ...room, seats: seatsForMode(room.mode, room.seats) };
+  const seated = {
+    ...room,
+    seats: seatsForMode(room.mode, room.seats, room.seats.length),
+  };
+  if (seated.mode === 'lies') {
+    return (
+      <View style={styles.teams}>
+        <View style={[styles.teamCol, { borderColor: colors.gold, flexBasis: '100%' }]}>
+          <Text style={styles.teamTitle}>{t(language, 'modeLies')}</Text>
+          {seated.seats.map((seat, index) => (
+            <SeatCard
+              key={index}
+              language={language}
+              seat={seat}
+              index={index}
+              started={seated.started}
+              friends={friends}
+              stacked
+              partner={false}
+              onClaimSeat={onClaimSeat}
+              onAddFriend={onAddFriend}
+              onToggleMute={onToggleMute}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  }
   const teams = seated.mode === 'super' ? ([0, 1, 2] as const) : ([0, 1] as const);
   return (
     <View style={styles.teams}>

@@ -6,6 +6,8 @@ type Size = 'xs' | 'sm';
 
 type Props = {
   size?: Size;
+  width?: number;
+  height?: number;
   tilt?: number;
 };
 
@@ -14,14 +16,18 @@ const DIM = {
   sm: { width: 32, height: 46 },
 };
 
-export function CardBack({ size = 'sm', tilt = 0 }: Props) {
-  const dim = DIM[size];
+export function CardBack({ size = 'sm', width, height, tilt = 0 }: Props) {
+  const dim = {
+    width: width ?? DIM[size].width,
+    height: height ?? DIM[size].height,
+  };
+  const tiny = dim.width <= 22;
   return (
     <View
       style={[
         styles.card,
         dim,
-        size === 'xs' && styles.cardXs,
+        (size === 'xs' || tiny) && styles.cardXs,
         { transform: [{ rotate: `${tilt}deg` }] },
       ]}
     >

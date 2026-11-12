@@ -132,6 +132,10 @@ describe('Super Murlan', () => {
     expect(game.match?.hands.every((hand) => hand.length === 13)).toBe(true);
     expect(game.match?.undealt).toHaveLength(4);
     const hostView = payloadFor(game, host.id)!;
+    expect(hostView.view.mode).not.toBe('lies');
+    if (hostView.view.mode === 'lies') {
+      throw new Error('expected super view');
+    }
     expect(hostView.view.ownHand).toHaveLength(13);
     expect(hostView.view.cardCounts).toEqual([13, 13, 13, 13, 13, 13]);
     expect(hostView.view.undealtCount).toBe(4);

@@ -1,4 +1,13 @@
-import { ChaosAbilityId, GameState, MatchMode, PublicChaosView, PublicMatchView, SeatId } from '../domain';
+import {
+  ChaosAbilityId,
+  GameState,
+  MatchMode,
+  PublicChaosView,
+  PublicLiesView,
+  PublicMatchView,
+  SeatId,
+  StandardRank,
+} from '../domain';
 import { Friendship, GameSummary, PlatformNotice, PublicPlayer, TableSeries } from '../platform/types';
 import { ReactionId } from '../reactions';
 import { ChatMessage } from './chat';
@@ -23,6 +32,7 @@ export type RelayRoom = {
   hostId: string;
   started: boolean;
   mode?: MatchMode;
+  liesDeckCount?: 1 | 2;
   seats: (RelaySeat | null)[];
   pendingJoins?: { fromId: string; username: string }[];
 };
@@ -43,12 +53,23 @@ export type ClientMessage =
   | {
       t: 'intent';
       id?: string;
-      kind: 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability';
+      kind:
+        | 'play'
+        | 'pass'
+        | 'exchange'
+        | 'nextHand'
+        | 'playAgain'
+        | 'ability'
+        | 'liesClaim'
+        | 'liesBelieve'
+        | 'liesChallenge'
+        | 'liesClear';
       cards?: string[];
       cardId?: string;
       intoCardId?: string;
       abilityId?: ChaosAbilityId;
       targetSeat?: SeatId;
+      rank?: StandardRank;
     }
   | { t: 'mute'; muted: boolean }
   | { t: 'speaking'; on: boolean }
@@ -63,18 +84,41 @@ export type ServerMessage =
   | { t: 'room'; room: RelayRoom }
   | { t: 'started'; mode: MatchMode }
   | { t: 'state'; match: GameState }
-  | { t: 'view'; gameId: string; code: string; seat: SeatId; view: PublicMatchView; legalCardIds: string[]; humanTurn: boolean; nextHandReady?: SeatId[]; playAgainReady?: SeatId[]; series?: TableSeries; chaos?: PublicChaosView | null }
+  | {
+      t: 'view';
+      gameId: string;
+      code: string;
+      seat: SeatId;
+      view: PublicMatchView | PublicLiesView;
+      legalCardIds: string[];
+      humanTurn: boolean;
+      nextHandReady?: SeatId[];
+      playAgainReady?: SeatId[];
+      series?: TableSeries;
+      chaos?: PublicChaosView | null;
+    }
   | { t: 'social'; me: PublicPlayer; friends: PublicPlayer[]; requests: Friendship[]; inbox: PlatformNotice[]; games: GameSummary[] }
   | {
       t: 'intent';
       seat: SeatId;
       id?: string;
-      kind: 'play' | 'pass' | 'exchange' | 'nextHand' | 'playAgain' | 'ability';
+      kind:
+        | 'play'
+        | 'pass'
+        | 'exchange'
+        | 'nextHand'
+        | 'playAgain'
+        | 'ability'
+        | 'liesClaim'
+        | 'liesBelieve'
+        | 'liesChallenge'
+        | 'liesClear';
       cards?: string[];
       cardId?: string;
       intoCardId?: string;
       abilityId?: ChaosAbilityId;
       targetSeat?: SeatId;
+      rank?: StandardRank;
     }
   | { t: 'chat'; id: string; seat: SeatId; name: string; text: string; at: number }
   | { t: 'chatHistory'; messages: ChatMessage[] }
@@ -113,13 +157,15 @@ export function toGameRoom(snapshot: RelayRoom, myId: string | null): GameRoom {
       playerId: seat.playerId ?? null,
     };
   });
+  const mode = snapshot.mode ?? '2v2';
   return {
     id: snapshot.id ?? snapshot.code,
     code: snapshot.code,
     host: snapshot.hostId === myId,
     started: snapshot.started,
-    mode: snapshot.mode ?? '2v2',
-    seats: seatsForMode(snapshot.mode ?? '2v2', mapped),
+    mode,
+    liesDeckCount: snapshot.liesDeckCount === 2 ? 2 : 1,
+    seats: seatsForMode(mode, mapped, mapped.length),
     pendingJoins: snapshot.pendingJoins ?? [],
   };
 }

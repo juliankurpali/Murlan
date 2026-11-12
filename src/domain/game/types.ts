@@ -3,7 +3,7 @@ import { RulesConfig } from '../rules/types';
 
 export type SeatId = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type MatchMode = '2v2' | 'chaos' | 'super';
+export type MatchMode = '2v2' | 'chaos' | 'super' | 'lies';
 
 export type GamePhase = 'playing' | 'exchanging' | 'handComplete' | 'matchComplete';
 
